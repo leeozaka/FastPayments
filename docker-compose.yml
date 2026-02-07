@@ -1,0 +1,90 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=pagueveloz;Username=postgres;Password=postgres
+      - Logging__LogLevel__Default=Warning
+      - Logging__LogLevel__Microsoft.AspNetCore=Warning
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - default
+      - k6
+
+  postgres:
+    image: postgres:18.1-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: pagueveloz
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "none"
+    profiles:
+      - default
+      - k6
+
+  influxdb:
+    image: influxdb:1.12
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=k6
+    volumes:
+      - influxdb_data:/var/lib/influxdb
+    logging:
+      driver: "none"
+    profiles:
+      - k6
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./k6/grafana/provisioning:/etc/grafana/provisioning
+      - ./k6/grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - influxdb
+    logging:
+      driver: "none"
+    profiles:
+      - k6
+
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./k6:/scripts
+      - ./k6/results:/results
+    environment:
+      - BASE_URL=http://api:8080
+      - K6_OUT=influxdb=http://influxdb:8086/k6
+    depends_on:
+      - api
+      - influxdb
+    command: run /scripts/load-test.js
+    profiles:
+      - k6
+
+volumes:
+  pgdata:
+  influxdb_data:
+  grafana_data:
