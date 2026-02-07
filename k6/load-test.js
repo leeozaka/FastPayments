@@ -104,12 +104,13 @@ function getBalance(accountId) {
 }
 
 function processTransaction(operation, accountId, amount, extra = {}) {
+  const refId = uuidv4();
   const payload = JSON.stringify({
     operation,
     account_id: accountId,
     amount,
     currency: "BRL",
-    reference_id: uuidv4(),
+    reference_id: refId,
     ...extra,
   });
 
@@ -124,6 +125,7 @@ function processTransaction(operation, accountId, amount, extra = {}) {
   successRate.add(ok);
   if (!ok) failedTransactions.add(1);
 
+  res.reference_id = refId;
   return res;
 }
 
@@ -221,15 +223,16 @@ export default function () {
       const { accountId } = createAccount();
       sleep(0.1);
 
-      const creditRef = uuidv4();
       processTransaction("credit", accountId, 100000);
       sleep(0.1);
 
       const debitAmount = randomIntBetween(1000, 20000);
-      processTransaction("debit", accountId, debitAmount);
+      const debitRes = processTransaction("debit", accountId, debitAmount);
       sleep(0.1);
 
-      processTransaction("reversal", accountId, debitAmount);
+      processTransaction("reversal", accountId, debitAmount, {
+        metadata: { original_reference_id: debitRes.reference_id },
+      });
       sleep(0.1);
 
       getBalance(accountId);

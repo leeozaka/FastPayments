@@ -7,7 +7,8 @@ services:
       - "5000:8080"
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=pagueveloz;Username=postgres;Password=postgres
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=pagueveloz;Username=postgres;Password=postgres;Pooling=true;Minimum Pool Size=10;Maximum Pool Size=200;Connection Idle Lifetime=300;Connection Pruning Interval=10
+      - EnableDatabasePurge=true
       - Logging__LogLevel__Default=Warning
       - Logging__LogLevel__Microsoft.AspNetCore=Warning
     depends_on:
@@ -32,8 +33,6 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    logging:
-      driver: "none"
     profiles:
       - default
       - k6

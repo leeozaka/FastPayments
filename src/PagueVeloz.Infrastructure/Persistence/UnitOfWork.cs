@@ -42,6 +42,61 @@ public sealed class UnitOfWork(ApplicationDbContext context) : IUnitOfWork
         }
     }
 
+    public async Task ExecuteInTransactionAsync(Func<CancellationToken, Task> operation, CancellationToken cancellationToken = default)
+    {
+        if (context.Database.IsInMemory())
+        {
+            await operation(cancellationToken).ConfigureAwait(false);
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var strategy = context.Database.CreateExecutionStrategy();
+        await strategy.ExecuteAsync(async ct =>
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+            try
+            {
+                await operation(ct).ConfigureAwait(false);
+                await context.SaveChangesAsync(ct).ConfigureAwait(false);
+                await transaction.CommitAsync(ct).ConfigureAwait(false);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct).ConfigureAwait(false);
+                throw;
+            }
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<T> ExecuteInTransactionAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken = default)
+    {
+        if (context.Database.IsInMemory())
+        {
+            var r = await operation(cancellationToken).ConfigureAwait(false);
+            await context.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            return r;
+        }
+
+        var strategy = context.Database.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async ct =>
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(ct).ConfigureAwait(false);
+            try
+            {
+                var result = await operation(ct).ConfigureAwait(false);
+                await context.SaveChangesAsync(ct).ConfigureAwait(false);
+                await transaction.CommitAsync(ct).ConfigureAwait(false);
+                return result;
+            }
+            catch
+            {
+                await transaction.RollbackAsync(ct).ConfigureAwait(false);
+                throw;
+            }
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     public void Dispose()
     {
         _transaction?.Dispose();

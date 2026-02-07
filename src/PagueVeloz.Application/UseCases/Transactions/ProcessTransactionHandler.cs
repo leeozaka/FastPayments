@@ -1,18 +1,18 @@
 using MediatR;
 using PagueVeloz.Application.DTOs;
 using PagueVeloz.Application.Interfaces;
+using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Entities;
 using PagueVeloz.Domain.Enums;
 using PagueVeloz.Domain.Exceptions;
 using PagueVeloz.Domain.Interfaces.Repositories;
-using PagueVeloz.Domain.Interfaces.Services;
 
 namespace PagueVeloz.Application.UseCases.Transactions;
 
 public sealed class ProcessTransactionHandler(
     IAccountRepository accountRepository,
     ITransactionRepository transactionRepository,
-    ITransferService transferService,
+    ITransferSagaService transferSagaService,
     IUnitOfWork unitOfWork,
     IEventBus eventBus,
     IDistributedLockService lockService) : IRequestHandler<ProcessTransactionCommand, TransactionResponse>
@@ -32,40 +32,71 @@ public sealed class ProcessTransactionHandler(
             return MapToResponse(existingTransaction, existingAccount);
         }
 
+        var operation = ParseOperation(request.Operation);
+
+        if (operation == TransactionType.Transfer)
+            return await ProcessTransferViaSagaAsync(request, cancellationToken).ConfigureAwait(false);
+
         await using var lockHandle = await lockService
             .AcquireLockAsync($"account:{request.AccountId}", TimeSpan.FromSeconds(30), cancellationToken)
             .ConfigureAwait(false);
 
-        var operation = ParseOperation(request.Operation);
-
-        try
+        var (transaction, account) = await unitOfWork.ExecuteInTransactionAsync(async ct =>
         {
-            await unitOfWork.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-
-            var (transaction, account) = operation switch
+            return operation switch
             {
-                TransactionType.Credit => await ProcessCreditAsync(request, cancellationToken).ConfigureAwait(false),
-                TransactionType.Debit => await ProcessDebitAsync(request, cancellationToken).ConfigureAwait(false),
-                TransactionType.Reserve => await ProcessReserveAsync(request, cancellationToken).ConfigureAwait(false),
-                TransactionType.Capture => await ProcessCaptureAsync(request, cancellationToken).ConfigureAwait(false),
-                TransactionType.Reversal => await ProcessReversalAsync(request, cancellationToken).ConfigureAwait(false),
-                TransactionType.Transfer => await ProcessTransferAsync(request, cancellationToken).ConfigureAwait(false),
+                TransactionType.Credit => await ProcessCreditAsync(request, ct).ConfigureAwait(false),
+                TransactionType.Debit => await ProcessDebitAsync(request, ct).ConfigureAwait(false),
+                TransactionType.Reserve => await ProcessReserveAsync(request, ct).ConfigureAwait(false),
+                TransactionType.Capture => await ProcessCaptureAsync(request, ct).ConfigureAwait(false),
+                TransactionType.Reversal => await ProcessReversalAsync(request, ct).ConfigureAwait(false),
                 _ => throw new DomainException("INVALID_OPERATION", $"Unsupported operation: {request.Operation}")
             };
+        }, cancellationToken).ConfigureAwait(false);
 
-            await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-            await unitOfWork.CommitTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await eventBus.PublishAllAsync(account.DomainEvents, cancellationToken).ConfigureAwait(false);
+        account.ClearDomainEvents();
 
-            await eventBus.PublishAllAsync(account.DomainEvents, cancellationToken).ConfigureAwait(false);
-            account.ClearDomainEvents();
+        return MapToResponse(transaction, account);
+    }
 
-            return MapToResponse(transaction, account);
-        }
-        catch
+    private async Task<TransactionResponse> ProcessTransferViaSagaAsync(ProcessTransactionCommand request, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.DestinationAccountId))
+            throw new DomainException("MISSING_DESTINATION", "Transfer requires 'destination_account_id'.");
+
+        var result = await transferSagaService.ExecuteTransferAsync(
+            request.AccountId,
+            request.DestinationAccountId,
+            request.Amount,
+            request.Currency,
+            request.ReferenceId,
+            request.Metadata,
+            ct).ConfigureAwait(false);
+
+        if (!result.Success)
         {
-            await unitOfWork.RollbackTransactionAsync(cancellationToken).ConfigureAwait(false);
-            throw;
+            return new TransactionResponse
+            {
+                TransactionId = $"{request.ReferenceId}-PROCESSED",
+                Status = "failed",
+                Balance = result.SourceBalance,
+                ReservedBalance = result.SourceReservedBalance,
+                AvailableBalance = result.SourceAvailableBalance,
+                Timestamp = DateTime.UtcNow,
+                ErrorMessage = result.FailureReason
+            };
         }
+
+        return new TransactionResponse
+        {
+            TransactionId = $"{result.DebitTransactionId}-PROCESSED",
+            Status = "success",
+            Balance = result.SourceBalance,
+            ReservedBalance = result.SourceReservedBalance,
+            AvailableBalance = result.SourceAvailableBalance,
+            Timestamp = DateTime.UtcNow
+        };
     }
 
     private async Task<(Transaction, Account)> ProcessCreditAsync(ProcessTransactionCommand request, CancellationToken ct)
@@ -137,20 +168,6 @@ public sealed class ProcessTransactionHandler(
         await accountRepository.UpdateAsync(account, ct).ConfigureAwait(false);
         await transactionRepository.AddAsync(transaction, ct).ConfigureAwait(false);
         return (transaction, account);
-    }
-
-    private async Task<(Transaction, Account)> ProcessTransferAsync(ProcessTransactionCommand request, CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(request.DestinationAccountId))
-            throw new DomainException("MISSING_DESTINATION", "Transfer requires 'destination_account_id'.");
-
-        var (debitTx, _) = await transferService
-            .TransferAsync(request.AccountId, request.DestinationAccountId,
-                request.Amount, request.Currency, request.ReferenceId, request.Metadata, ct)
-            .ConfigureAwait(false);
-
-        var sourceAccount = await GetAccountOrThrowAsync(request.AccountId, ct).ConfigureAwait(false);
-        return (debitTx, sourceAccount);
     }
 
     private async Task<Account> GetAccountOrThrowAsync(string accountId, CancellationToken ct)

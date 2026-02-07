@@ -1,7 +1,9 @@
+using MassTransit;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using PagueVeloz.Application.Interfaces;
+using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Interfaces.Repositories;
 using PagueVeloz.Domain.Interfaces.Services;
 using PagueVeloz.Domain.Services;
@@ -11,6 +13,8 @@ using PagueVeloz.Infrastructure.Persistence;
 using PagueVeloz.Infrastructure.Persistence.Context;
 using PagueVeloz.Infrastructure.Persistence.Repositories;
 using PagueVeloz.Infrastructure.Resilience;
+using PagueVeloz.Infrastructure.Sagas;
+using PagueVeloz.Infrastructure.Sagas.Consumers;
 
 namespace PagueVeloz.Infrastructure;
 
@@ -24,7 +28,14 @@ public static class DependencyInjection
         {
             if (!string.IsNullOrEmpty(connectionString))
             {
-                options.UseNpgsql(connectionString);
+                options.UseNpgsql(connectionString, npgsqlOptions =>
+                {
+                    npgsqlOptions.EnableRetryOnFailure(
+                        maxRetryCount: 3,
+                        maxRetryDelay: TimeSpan.FromSeconds(5),
+                        errorCodesToAdd: null);
+                    npgsqlOptions.CommandTimeout(30);
+                });
             }
             else
             {
@@ -42,6 +53,23 @@ public static class DependencyInjection
         services.AddScoped<ITransferService, TransferDomainService>();
         services.AddSingleton<IDistributedLockService, InMemoryDistributedLockService>();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
+
+        services.AddMassTransit(cfg =>
+        {
+            cfg.AddConsumer<DebitSourceConsumer>();
+            cfg.AddConsumer<CreditDestinationConsumer>();
+            cfg.AddConsumer<CompensateDebitConsumer>();
+
+            cfg.AddSagaStateMachine<TransferStateMachine, TransferSagaState>()
+                .InMemoryRepository();
+
+            cfg.UsingInMemory((context, busConfig) =>
+            {
+                busConfig.ConfigureEndpoints(context);
+            });
+        });
+
+        services.AddScoped<ITransferSagaService, TransferSagaService>();
 
         services.AddResiliencePolicies();
 
