@@ -1,5 +1,6 @@
 using MediatR;
 using PagueVeloz.Application.DTOs;
+using PagueVeloz.Application.Interfaces;
 
 namespace PagueVeloz.Application.UseCases.Transactions;
 
@@ -11,4 +12,4 @@ public sealed record ProcessTransactionCommand(
     string ReferenceId,
     string? DestinationAccountId,
     Dictionary<string, string>? Metadata
-) : IRequest<TransactionResponse>;
+) : IRequest<TransactionResponse>, ITraceable;

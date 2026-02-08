@@ -1,12 +1,11 @@
 using MassTransit;
-using Microsoft.Extensions.Logging;
 using PagueVeloz.Application.Sagas.Transfer;
 
 namespace PagueVeloz.Infrastructure.Sagas;
 
 public sealed class TransferSagaService(
-    IBus bus,
-    ILogger<TransferSagaService> logger) : ITransferSagaService
+    IBus bus
+    ) : ITransferSagaService
 {
     private static readonly TimeSpan SagaTimeout = TimeSpan.FromSeconds(30);
 
@@ -20,10 +19,6 @@ public sealed class TransferSagaService(
         CancellationToken cancellationToken = default)
     {
         var correlationId = Guid.NewGuid();
-
-        logger.LogInformation(
-            "Initiating transfer saga {SagaId}: {Amount} {Currency} from {Source} to {Destination}",
-            correlationId, amount, currency, sourceAccountId, destinationAccountId);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(SagaTimeout);

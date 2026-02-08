@@ -3,8 +3,8 @@ using Microsoft.Extensions.Logging;
 using PagueVeloz.Application.Interfaces;
 using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Interfaces.Repositories;
-using Polly;
 using Polly.Registry;
+using SerilogContext = Serilog.Context.LogContext;
 
 namespace PagueVeloz.Infrastructure.Sagas.Consumers;
 
@@ -18,54 +18,52 @@ public sealed class CompensateDebitConsumer(
     public async Task Consume(ConsumeContext<CompensateDebitCommand> context)
     {
         var message = context.Message;
-        logger.LogInformation(
-            "Saga {CorrelationId}: Compensating debit — crediting {Amount} back to account {AccountId}",
-            message.CorrelationId, message.Amount, message.AccountId);
 
-        var pipeline = pipelineProvider.GetPipeline("database");
-
-        try
+        using (SerilogContext.PushProperty("ReferenceId", message.ReferenceId))
+        using (SerilogContext.PushProperty("AccountId", message.AccountId))
         {
-            var result = await pipeline.ExecuteAsync(async ct =>
+            logger.LogInformation("Saga: Compensating debit of {Amount}", message.Amount);
+
+            var pipeline = pipelineProvider.GetPipeline("database");
+
+            try
             {
-                return await unitOfWork.ExecuteInTransactionAsync(async ct2 =>
+                var result = await pipeline.ExecuteAsync(async ct =>
                 {
-                    var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct2)
-                        ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found during compensation.");
-
-                    var transaction = account.Credit(message.Amount, message.Currency, message.ReferenceId);
-
-                    await accountRepository.UpdateAsync(account, ct2);
-                    await transactionRepository.AddAsync(transaction, ct2);
-
-                    return new
+                    return await unitOfWork.ExecuteInTransactionAsync(async ct2 =>
                     {
-                        account.Balance,
-                        account.ReservedBalance,
-                        account.AvailableBalance
-                    };
-                }, ct).ConfigureAwait(false);
-            }, context.CancellationToken).ConfigureAwait(false);
+                        var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct2)
+                            ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found during compensation.");
 
-            await context.Publish(new CompensateDebitCompleted
+                        var transaction = account.Credit(message.Amount, message.Currency, message.ReferenceId);
+
+                        await accountRepository.UpdateAsync(account, ct2);
+                        await transactionRepository.AddAsync(transaction, ct2);
+
+                        return new
+                        {
+                            account.Balance,
+                            account.ReservedBalance,
+                            account.AvailableBalance
+                        };
+                    }, ct).ConfigureAwait(false);
+                }, context.CancellationToken).ConfigureAwait(false);
+
+                await context.Publish(new CompensateDebitCompleted
+                {
+                    CorrelationId = message.CorrelationId,
+                    SourceBalance = result.Balance,
+                    SourceReservedBalance = result.ReservedBalance,
+                    SourceAvailableBalance = result.AvailableBalance
+                });
+
+                logger.LogInformation("Saga: Compensation completed. New balance: {Balance}", result.Balance);
+            }
+            catch (Exception ex)
             {
-                CorrelationId = message.CorrelationId,
-                SourceBalance = result.Balance,
-                SourceReservedBalance = result.ReservedBalance,
-                SourceAvailableBalance = result.AvailableBalance
-            });
-
-            logger.LogInformation(
-                "Saga {CorrelationId}: Compensation completed. Balance restored to {Balance}",
-                message.CorrelationId, result.Balance);
-        }
-        catch (Exception ex)
-        {
-            logger.LogCritical(ex,
-                "Saga {CorrelationId}: COMPENSATION FAILED for account {AccountId}. Manual intervention required!",
-                message.CorrelationId, message.AccountId);
-
-            throw;
+                logger.LogError(ex, "Saga: Compensation failed");
+                throw; // Let MassTransit handle retry
+            }
         }
     }
 }

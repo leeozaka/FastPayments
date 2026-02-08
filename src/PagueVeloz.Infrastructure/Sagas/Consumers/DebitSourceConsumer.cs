@@ -7,6 +7,7 @@ using PagueVeloz.Domain.Exceptions;
 using PagueVeloz.Domain.Interfaces.Repositories;
 using Polly;
 using Polly.Registry;
+using SerilogContext = Serilog.Context.LogContext;
 
 namespace PagueVeloz.Infrastructure.Sagas.Consumers;
 
@@ -20,63 +21,62 @@ public sealed class DebitSourceConsumer(
     public async Task Consume(ConsumeContext<DebitSourceCommand> context)
     {
         var message = context.Message;
-        logger.LogInformation(
-            "Saga {CorrelationId}: Debiting {Amount} from account {AccountId}",
-            message.CorrelationId, message.Amount, message.AccountId);
 
-        var pipeline = pipelineProvider.GetPipeline("database");
-
-        try
+        using (SerilogContext.PushProperty("ReferenceId", message.ReferenceId))
+        using (SerilogContext.PushProperty("AccountId", message.AccountId))
         {
-            var result = await pipeline.ExecuteAsync(async ct =>
+            logger.LogInformation("Saga: Debiting {Amount} from account", message.Amount);
+
+            var pipeline = pipelineProvider.GetPipeline("database");
+
+            try
             {
-                return await unitOfWork.ExecuteInTransactionAsync(async ct2 =>
+                var result = await pipeline.ExecuteAsync(async ct =>
                 {
-                    var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct2)
-                        ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found.");
-
-                    var transaction = account.Debit(message.Amount, message.Currency, message.ReferenceId, message.Metadata);
-
-                    if (transaction.Status == TransactionStatus.Failed)
-                        throw new DomainException("DEBIT_FAILED", transaction.ErrorMessage ?? "Debit failed");
-
-                    await accountRepository.UpdateAsync(account, ct2);
-                    await transactionRepository.AddAsync(transaction, ct2);
-
-                    return new
+                    return await unitOfWork.ExecuteInTransactionAsync(async ct2 =>
                     {
-                        transaction.ReferenceId,
-                        account.Balance,
-                        account.ReservedBalance,
-                        account.AvailableBalance
-                    };
-                }, ct).ConfigureAwait(false);
-            }, context.CancellationToken).ConfigureAwait(false);
+                        var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct2)
+                            ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found.");
 
-            await context.Publish(new DebitSourceCompleted
+                        var transaction = account.Debit(message.Amount, message.Currency, message.ReferenceId, message.Metadata);
+
+                        if (transaction.Status == TransactionStatus.Failed)
+                            throw new DomainException("DEBIT_FAILED", transaction.ErrorMessage ?? "Debit failed");
+
+                        await accountRepository.UpdateAsync(account, ct2);
+                        await transactionRepository.AddAsync(transaction, ct2);
+
+                        return new
+                        {
+                            transaction.ReferenceId,
+                            account.Balance,
+                            account.ReservedBalance,
+                            account.AvailableBalance
+                        };
+                    }, ct).ConfigureAwait(false);
+                }, context.CancellationToken).ConfigureAwait(false);
+
+                await context.Publish(new DebitSourceCompleted
+                {
+                    CorrelationId = message.CorrelationId,
+                    TransactionId = result.ReferenceId,
+                    SourceBalance = result.Balance,
+                    SourceReservedBalance = result.ReservedBalance,
+                    SourceAvailableBalance = result.AvailableBalance
+                });
+
+                logger.LogInformation("Saga: Debit completed. New balance: {Balance}", result.Balance);
+            }
+            catch (Exception ex)
             {
-                CorrelationId = message.CorrelationId,
-                TransactionId = result.ReferenceId,
-                SourceBalance = result.Balance,
-                SourceReservedBalance = result.ReservedBalance,
-                SourceAvailableBalance = result.AvailableBalance
-            });
+                logger.LogError(ex, "Saga: Debit step failed");
 
-            logger.LogInformation(
-                "Saga {CorrelationId}: Debit completed. New balance: {Balance}",
-                message.CorrelationId, result.Balance);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex,
-                "Saga {CorrelationId}: Debit step failed for account {AccountId}",
-                message.CorrelationId, message.AccountId);
-
-            await context.Publish(new DebitSourceFailed
-            {
-                CorrelationId = message.CorrelationId,
-                Reason = ex.Message
-            });
+                await context.Publish(new DebitSourceFailed
+                {
+                    CorrelationId = message.CorrelationId,
+                    Reason = ex.Message
+                });
+            }
         }
     }
 }

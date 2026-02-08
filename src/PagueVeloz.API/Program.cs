@@ -17,8 +17,7 @@ try
 
     builder.Host.UseSerilog((context, configuration) =>
         configuration.ReadFrom.Configuration(context.Configuration)
-            .Enrich.FromLogContext()
-            .WriteTo.Console());
+            .Enrich.FromLogContext());
 
     builder.Services.AddApiServices(builder.Configuration);
     builder.Services.AddApplication();
@@ -36,7 +35,7 @@ try
 
     app.UseSerilogRequestLogging();
     app.MapControllers();
-    
+
     app.MapHealthChecks("/health/live", new HealthCheckOptions
     {
         Predicate = _ => false
@@ -46,23 +45,6 @@ try
     {
         Predicate = check => check.Tags.Contains("ready")
     });
-
-    if (app.Environment.IsDevelopment())
-    {
-        app.Lifetime.ApplicationStarted.Register(() =>
-        {
-            try
-            {
-                var url = app.Urls.FirstOrDefault() ?? "http://localhost:5000";
-                var swaggerUrl = $"{url}/swagger";
-                Process.Start(new ProcessStartInfo(swaggerUrl) { UseShellExecute = true });
-            }
-            catch
-            {
-                // no browser available...
-            }
-        });
-    }
 
     await app.RunAsync();
 }
