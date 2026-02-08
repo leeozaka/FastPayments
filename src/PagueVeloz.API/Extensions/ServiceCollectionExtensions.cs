@@ -1,12 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.Extensions.Configuration;
 using Microsoft.OpenApi.Models;
 
 namespace PagueVeloz.API.Extensions;
 
 public static class ServiceCollectionExtensions
 {
-    public static IServiceCollection AddApiServices(this IServiceCollection services)
+    public static IServiceCollection AddApiServices(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddControllers()
             .AddJsonOptions(options =>
@@ -27,7 +28,17 @@ public static class ServiceCollectionExtensions
             });
         });
 
-        services.AddHealthChecks();
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        
+        var healthChecksBuilder = services.AddHealthChecks();
+        
+        if (!string.IsNullOrEmpty(connectionString))
+        {
+            healthChecksBuilder.AddNpgSql(
+                connectionString,
+                name: "postgresql",
+                tags: ["ready"]);
+        }
 
         return services;
     }

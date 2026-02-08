@@ -203,6 +203,70 @@ public sealed class Account : Entity
         return transaction;
     }
 
+    public Transaction Reverse(Transaction originalTransaction, string referenceId, Dictionary<string, string>? metadata = null)
+    {
+        EnsureActive();
+        ValidateCurrency(originalTransaction.CurrencyCode);
+
+        if (originalTransaction.AccountId != AccountId)
+            throw new DomainException("INVALID_REVERSAL", "Transaction does not belong to this account.");
+
+        if (originalTransaction.Status != TransactionStatus.Success)
+            throw new DomainException("INVALID_REVERSAL", "Can only reverse successful transactions.");
+
+        var previousBalance = Balance;
+        var previousReservedBalance = ReservedBalance;
+
+        switch (originalTransaction.Type)
+        {
+            case TransactionType.Credit:
+                if (originalTransaction.Amount > TotalAvailableWithCredit)
+                    throw new InsufficientFundsException(AccountId, originalTransaction.Amount, TotalAvailableWithCredit);
+                Balance -= originalTransaction.Amount;
+                break;
+
+            case TransactionType.Debit:
+                Balance += originalTransaction.Amount;
+                break;
+
+            case TransactionType.Reserve:
+                if (originalTransaction.Amount > ReservedBalance)
+                    throw new InsufficientReservedBalanceException(AccountId, originalTransaction.Amount, ReservedBalance);
+                ReservedBalance -= originalTransaction.Amount;
+                break;
+
+            case TransactionType.Capture:
+                Balance += originalTransaction.Amount;
+                break;
+
+            default:
+                throw new DomainException("INVALID_REVERSAL",
+                    $"Cannot reverse operation of type {originalTransaction.Type}.");
+        }
+
+        UpdatedAt = DateTime.UtcNow;
+
+        var transaction = Transaction.Create(
+            AccountId, TransactionType.Reversal, originalTransaction.Amount,
+            originalTransaction.CurrencyCode, referenceId, TransactionStatus.Success,
+            metadata, null, originalTransaction.ReferenceId);
+
+        _transactions.Add(transaction);
+
+        RaiseDomainEvent(new TransactionProcessedEvent(
+            transaction.Id, AccountId, TransactionType.Reversal,
+            originalTransaction.Amount, originalTransaction.CurrencyCode,
+            TransactionStatus.Success, AvailableBalance, ReservedBalance));
+
+        if (previousBalance != Balance)
+        {
+            RaiseDomainEvent(new BalanceUpdatedEvent(
+                AccountId, previousBalance, Balance, ReservedBalance, AvailableBalance));
+        }
+
+        return transaction;
+    }
+
     public void Activate()
     {
         Status = AccountStatus.Active;

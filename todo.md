@@ -18,7 +18,7 @@
 - [x] Debit operation — subtracts from balance, respects credit limit
 - [x] Reserve operation — moves from available to reserved balance
 - [x] Capture operation — confirms reserved amount, decrements both reserved and balance
-- [ ] **Reversal operation in Account entity** — method exists only in handler, no `Reverse()` method on Account. The handler manually does credit/debit but the Account entity itself has no reversal method. Should follow the same pattern as other operations (raise events, create transaction record).
+- [x] Reversal operation in Account entity  
 - [x] Transfer — via `TransferDomainService` with pessimistic locking
 - [x] Money value object (add, subtract, comparison)
 - [x] Currency value object (BRL, USD, EUR)
@@ -42,7 +42,7 @@
 - [x] Distributed locking in ProcessTransactionHandler
 - [x] UnitOfWork transaction management with rollback
 - [x] Domain event publishing after transaction processing
-- [ ] **Reversal handler: validate reversal of reserve/capture/transfer** — currently only reverses credit→debit and debit→credit. Should also handle reversing reserves (release reserved) and captures.
+- [x] Reversal handler: validate reversal of reserve/capture/transfer
 - [ ] **Transfer handler returns only debit transaction** — the credit transaction on the destination account is created by TransferDomainService but the response only includes the debit side. Consider returning both or a composite response.
 - [ ] **No metadata size/content validation** — metadata dictionary has no limits on key count or value lengths.
 
@@ -69,8 +69,8 @@
 
 ### Resilience
 - [x] ResiliencePolicies.cs exists with retry + exponential backoff config
-- [ ] **Resilience policies are registered but NEVER APPLIED** — no handler, repository, or service actually uses the configured `ResiliencePipeline`. Need to inject and wrap database/event operations with the resilience pipeline.
-- [ ] **Circuit breaker pattern not implemented** — mentioned as a "diferencial" in the challenge. Add to resilience policies.
+- [x] Resilience policies are registered but NEVER APPLIED
+- [x] Circuit breaker pattern not implemented
 
 ---
 
@@ -84,7 +84,7 @@
 - [x] Serilog structured logging
 - [x] Swagger/OpenAPI in development
 - [x] Health check endpoint at /health
-- [ ] **Health check has no actual probes** — `AddHealthChecks()` is called but no database or dependency checks are configured. Add PostgreSQL health check (package already referenced but not used).
+- [x] Health check has no actual probes
 - [ ] **Batch processing is sequential** — consider parallelizing independent transactions or at least noting the design decision.
 - [ ] **No API versioning** — not required but good practice.
 
@@ -96,7 +96,7 @@
 - [x] Logging pipeline behavior (timing)
 - [ ] **No performance metrics** — Consider adding Prometheus/OpenTelemetry metrics (transaction count, latency histograms, error rates).
 - [ ] **No transaction tracing/correlation** — Add correlation IDs or OpenTelemetry tracing.
-- [ ] **Health checks incomplete** — see API section above.
+- [x] Health checks incomplete
 
 ---
 
@@ -145,13 +145,7 @@
 
 ## Priority Order (Next Tasks)
 
-### P0 — Critical
-1. Apply resilience policies (retry with exponential backoff) to actual operations
-2. Add reversal method to Account entity + complete reversal handler for all operation types
-3. Add database health check probe
-
 ### P1 — High (evaluated aspects)
-5. Add circuit breaker to resilience policies
 6. Add performance metrics (transaction count, latency, error rate)
 7. Add correlation ID / transaction tracing
 

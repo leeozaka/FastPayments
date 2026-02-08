@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using PagueVeloz.API.Extensions;
 using PagueVeloz.API.Middleware;
 using PagueVeloz.Application;
@@ -19,7 +20,7 @@ try
             .Enrich.FromLogContext()
             .WriteTo.Console());
 
-    builder.Services.AddApiServices();
+    builder.Services.AddApiServices(builder.Configuration);
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
 
@@ -35,7 +36,16 @@ try
 
     app.UseSerilogRequestLogging();
     app.MapControllers();
-    app.MapHealthChecks("/health");
+    
+    app.MapHealthChecks("/health/live", new HealthCheckOptions
+    {
+        Predicate = _ => false
+    });
+
+    app.MapHealthChecks("/health/ready", new HealthCheckOptions
+    {
+        Predicate = check => check.Tags.Contains("ready")
+    });
 
     if (app.Environment.IsDevelopment())
     {

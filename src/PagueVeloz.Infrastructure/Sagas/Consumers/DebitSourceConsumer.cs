@@ -5,6 +5,8 @@ using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Enums;
 using PagueVeloz.Domain.Exceptions;
 using PagueVeloz.Domain.Interfaces.Repositories;
+using Polly;
+using Polly.Registry;
 
 namespace PagueVeloz.Infrastructure.Sagas.Consumers;
 
@@ -12,6 +14,7 @@ public sealed class DebitSourceConsumer(
     IAccountRepository accountRepository,
     ITransactionRepository transactionRepository,
     IUnitOfWork unitOfWork,
+    ResiliencePipelineProvider<string> pipelineProvider,
     ILogger<DebitSourceConsumer> logger) : IConsumer<DebitSourceCommand>
 {
     public async Task Consume(ConsumeContext<DebitSourceCommand> context)
@@ -21,29 +24,34 @@ public sealed class DebitSourceConsumer(
             "Saga {CorrelationId}: Debiting {Amount} from account {AccountId}",
             message.CorrelationId, message.Amount, message.AccountId);
 
+        var pipeline = pipelineProvider.GetPipeline("database");
+
         try
         {
-            var result = await unitOfWork.ExecuteInTransactionAsync(async ct =>
+            var result = await pipeline.ExecuteAsync(async ct =>
             {
-                var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct)
-                    ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found.");
-
-                var transaction = account.Debit(message.Amount, message.Currency, message.ReferenceId, message.Metadata);
-
-                if (transaction.Status == TransactionStatus.Failed)
-                    throw new DomainException("DEBIT_FAILED", transaction.ErrorMessage ?? "Debit failed");
-
-                await accountRepository.UpdateAsync(account, ct);
-                await transactionRepository.AddAsync(transaction, ct);
-
-                return new
+                return await unitOfWork.ExecuteInTransactionAsync(async ct2 =>
                 {
-                    transaction.ReferenceId,
-                    account.Balance,
-                    account.ReservedBalance,
-                    account.AvailableBalance
-                };
-            }, context.CancellationToken);
+                    var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct2)
+                        ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found.");
+
+                    var transaction = account.Debit(message.Amount, message.Currency, message.ReferenceId, message.Metadata);
+
+                    if (transaction.Status == TransactionStatus.Failed)
+                        throw new DomainException("DEBIT_FAILED", transaction.ErrorMessage ?? "Debit failed");
+
+                    await accountRepository.UpdateAsync(account, ct2);
+                    await transactionRepository.AddAsync(transaction, ct2);
+
+                    return new
+                    {
+                        transaction.ReferenceId,
+                        account.Balance,
+                        account.ReservedBalance,
+                        account.AvailableBalance
+                    };
+                }, ct).ConfigureAwait(false);
+            }, context.CancellationToken).ConfigureAwait(false);
 
             await context.Publish(new DebitSourceCompleted
             {

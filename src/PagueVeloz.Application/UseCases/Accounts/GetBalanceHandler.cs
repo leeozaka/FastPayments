@@ -10,7 +10,7 @@ public sealed class GetBalanceHandler(IAccountRepository accountRepository) : IR
     public async Task<AccountResponse> Handle(GetBalanceQuery request, CancellationToken cancellationToken)
     {
         var account = await accountRepository
-            .GetByAccountIdAsync(request.AccountId, cancellationToken)
+            .GetByAccountIdReadOnlyAsync(request.AccountId, cancellationToken)
             .ConfigureAwait(false)
             ?? throw new DomainException("ACCOUNT_NOT_FOUND", $"Account '{request.AccountId}' not found.");
 

@@ -4,9 +4,15 @@ using PagueVeloz.Domain.Entities;
 
 namespace PagueVeloz.Infrastructure.Persistence.Context;
 
-public sealed class ReadDbContext(ApplicationDbContext context) : IReadDbContext
+public sealed class ReadDbContext(DbContextOptions<ReadDbContext> options) : DbContext(options), IReadDbContext
 {
-    public IQueryable<Account> Accounts => context.Accounts.AsNoTracking();
-    public IQueryable<Transaction> Transactions => context.Transactions.AsNoTracking();
-    public IQueryable<Client> Clients => context.Clients.AsNoTracking();
+    public IQueryable<Account> Accounts => Set<Account>().AsNoTracking();
+    public IQueryable<Transaction> Transactions => Set<Transaction>().AsNoTracking();
+    public IQueryable<Client> Clients => Set<Client>().AsNoTracking();
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        base.OnModelCreating(modelBuilder);
+    }
 }

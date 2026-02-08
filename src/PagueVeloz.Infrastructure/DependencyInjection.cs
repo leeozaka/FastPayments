@@ -22,18 +22,18 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
     {
-        var connectionString = configuration.GetConnectionString("DefaultConnection");
+        var writeConnectionString = configuration.GetConnectionString("DefaultConnection");
+        var readConnectionString = configuration.GetConnectionString("ReadConnection");
+
+        if (string.IsNullOrEmpty(readConnectionString))
+            readConnectionString = writeConnectionString;
 
         services.AddDbContext<ApplicationDbContext>(options =>
         {
-            if (!string.IsNullOrEmpty(connectionString))
+            if (!string.IsNullOrEmpty(writeConnectionString))
             {
-                options.UseNpgsql(connectionString, npgsqlOptions =>
+                options.UseNpgsql(writeConnectionString, npgsqlOptions =>
                 {
-                    npgsqlOptions.EnableRetryOnFailure(
-                        maxRetryCount: 3,
-                        maxRetryDelay: TimeSpan.FromSeconds(5),
-                        errorCodesToAdd: null);
                     npgsqlOptions.CommandTimeout(30);
                 });
             }
@@ -43,7 +43,24 @@ public static class DependencyInjection
             }
         });
 
-        services.AddScoped<IReadDbContext, ReadDbContext>();
+        services.AddDbContext<ReadDbContext>(options =>
+        {
+            if (!string.IsNullOrEmpty(readConnectionString))
+            {
+                options.UseNpgsql(readConnectionString, npgsqlOptions =>
+                {
+                    npgsqlOptions.CommandTimeout(15);
+                });
+                options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+            }
+            else
+            {
+                options.UseInMemoryDatabase("PagueVelozDb");
+                options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+            }
+        });
+
+        services.AddScoped<IReadDbContext>(sp => sp.GetRequiredService<ReadDbContext>());
         services.AddScoped<IWriteDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();

@@ -26,7 +26,7 @@ public sealed class ProcessTransactionHandler(
         if (existingTransaction is not null)
         {
             var existingAccount = await accountRepository
-                .GetByAccountIdAsync(request.AccountId, cancellationToken)
+                .GetByAccountIdReadOnlyAsync(request.AccountId, cancellationToken)
                 .ConfigureAwait(false);
 
             return MapToResponse(existingTransaction, existingAccount);
@@ -148,21 +148,7 @@ public sealed class ProcessTransactionHandler(
             .ConfigureAwait(false)
             ?? throw new TransactionNotFoundException(originalRefId);
 
-        if (originalTransaction.Status != TransactionStatus.Success)
-            throw new DomainException("INVALID_REVERSAL", "Can only reverse successful transactions.");
-
-        Transaction transaction;
-        switch (originalTransaction.Type)
-        {
-            case TransactionType.Credit:
-                transaction = account.Debit(originalTransaction.Amount, request.Currency, request.ReferenceId, request.Metadata);
-                break;
-            case TransactionType.Debit:
-                transaction = account.Credit(originalTransaction.Amount, request.Currency, request.ReferenceId, request.Metadata);
-                break;
-            default:
-                throw new DomainException("INVALID_REVERSAL", $"Cannot reverse operation of type {originalTransaction.Type}.");
-        }
+        var transaction = account.Reverse(originalTransaction, request.ReferenceId, request.Metadata);
 
         originalTransaction.MarkAsReversed();
         await accountRepository.UpdateAsync(account, ct).ConfigureAwait(false);

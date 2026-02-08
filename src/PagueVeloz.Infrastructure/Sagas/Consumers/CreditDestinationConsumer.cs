@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging;
 using PagueVeloz.Application.Interfaces;
 using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Interfaces.Repositories;
+using Polly;
+using Polly.Registry;
 
 namespace PagueVeloz.Infrastructure.Sagas.Consumers;
 
@@ -10,6 +12,7 @@ public sealed class CreditDestinationConsumer(
     IAccountRepository accountRepository,
     ITransactionRepository transactionRepository,
     IUnitOfWork unitOfWork,
+    ResiliencePipelineProvider<string> pipelineProvider,
     ILogger<CreditDestinationConsumer> logger) : IConsumer<CreditDestinationCommand>
 {
     public async Task Consume(ConsumeContext<CreditDestinationCommand> context)
@@ -19,20 +22,25 @@ public sealed class CreditDestinationConsumer(
             "Saga {CorrelationId}: Crediting {Amount} to account {AccountId}",
             message.CorrelationId, message.Amount, message.AccountId);
 
+        var pipeline = pipelineProvider.GetPipeline("database");
+
         try
         {
-            var transactionId = await unitOfWork.ExecuteInTransactionAsync(async ct =>
+            var transactionId = await pipeline.ExecuteAsync(async ct =>
             {
-                var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct)
-                    ?? throw new InvalidOperationException($"Destination account '{message.AccountId}' not found.");
+                return await unitOfWork.ExecuteInTransactionAsync(async ct2 =>
+                {
+                    var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct2)
+                        ?? throw new InvalidOperationException($"Destination account '{message.AccountId}' not found.");
 
-                var transaction = account.Credit(message.Amount, message.Currency, message.ReferenceId, message.Metadata);
+                    var transaction = account.Credit(message.Amount, message.Currency, message.ReferenceId, message.Metadata);
 
-                await accountRepository.UpdateAsync(account, ct);
-                await transactionRepository.AddAsync(transaction, ct);
+                    await accountRepository.UpdateAsync(account, ct2);
+                    await transactionRepository.AddAsync(transaction, ct2);
 
-                return transaction.ReferenceId;
-            }, context.CancellationToken);
+                    return transaction.ReferenceId;
+                }, ct).ConfigureAwait(false);
+            }, context.CancellationToken).ConfigureAwait(false);
 
             await context.Publish(new CreditDestinationCompleted
             {

@@ -125,8 +125,7 @@ function processTransaction(operation, accountId, amount, extra = {}) {
   successRate.add(ok);
   if (!ok) failedTransactions.add(1);
 
-  res.reference_id = refId;
-  return res;
+  return { response: res, reference_id: refId };
 }
 
 function processBatch(transactions) {
@@ -227,11 +226,11 @@ export default function () {
       sleep(0.1);
 
       const debitAmount = randomIntBetween(1000, 20000);
-      const debitRes = processTransaction("debit", accountId, debitAmount);
+      const { reference_id: debitRefId } = processTransaction("debit", accountId, debitAmount);
       sleep(0.1);
 
       processTransaction("reversal", accountId, debitAmount, {
-        metadata: { original_reference_id: debitRes.reference_id },
+        metadata: { original_reference_id: debitRefId },
       });
       sleep(0.1);
 

@@ -3,6 +3,8 @@ using Microsoft.Extensions.Logging;
 using PagueVeloz.Application.Interfaces;
 using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Interfaces.Repositories;
+using Polly;
+using Polly.Registry;
 
 namespace PagueVeloz.Infrastructure.Sagas.Consumers;
 
@@ -10,6 +12,7 @@ public sealed class CompensateDebitConsumer(
     IAccountRepository accountRepository,
     ITransactionRepository transactionRepository,
     IUnitOfWork unitOfWork,
+    ResiliencePipelineProvider<string> pipelineProvider,
     ILogger<CompensateDebitConsumer> logger) : IConsumer<CompensateDebitCommand>
 {
     public async Task Consume(ConsumeContext<CompensateDebitCommand> context)
@@ -19,25 +22,30 @@ public sealed class CompensateDebitConsumer(
             "Saga {CorrelationId}: Compensating debit — crediting {Amount} back to account {AccountId}",
             message.CorrelationId, message.Amount, message.AccountId);
 
+        var pipeline = pipelineProvider.GetPipeline("database");
+
         try
         {
-            var result = await unitOfWork.ExecuteInTransactionAsync(async ct =>
+            var result = await pipeline.ExecuteAsync(async ct =>
             {
-                var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct)
-                    ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found during compensation.");
-
-                var transaction = account.Credit(message.Amount, message.Currency, message.ReferenceId);
-
-                await accountRepository.UpdateAsync(account, ct);
-                await transactionRepository.AddAsync(transaction, ct);
-
-                return new
+                return await unitOfWork.ExecuteInTransactionAsync(async ct2 =>
                 {
-                    account.Balance,
-                    account.ReservedBalance,
-                    account.AvailableBalance
-                };
-            }, context.CancellationToken);
+                    var account = await accountRepository.GetByAccountIdAsync(message.AccountId, ct2)
+                        ?? throw new InvalidOperationException($"Source account '{message.AccountId}' not found during compensation.");
+
+                    var transaction = account.Credit(message.Amount, message.Currency, message.ReferenceId);
+
+                    await accountRepository.UpdateAsync(account, ct2);
+                    await transactionRepository.AddAsync(transaction, ct2);
+
+                    return new
+                    {
+                        account.Balance,
+                        account.ReservedBalance,
+                        account.AvailableBalance
+                    };
+                }, ct).ConfigureAwait(false);
+            }, context.CancellationToken).ConfigureAwait(false);
 
             await context.Publish(new CompensateDebitCompleted
             {

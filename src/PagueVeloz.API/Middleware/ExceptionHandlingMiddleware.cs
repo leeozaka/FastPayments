@@ -2,16 +2,28 @@ using System.Net;
 using System.Text.Json;
 using FluentValidation;
 using PagueVeloz.Domain.Exceptions;
+using Polly.Timeout;
 
 namespace PagueVeloz.API.Middleware;
 
 public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
+    };
+
     public async Task InvokeAsync(HttpContext context)
     {
         try
         {
             await next(context);
+        }
+        catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+        {
+            logger.LogInformation("Request was cancelled by the client: {Method} {Path}",
+                context.Request.Method, context.Request.Path);
+            context.Response.StatusCode = 499;
         }
         catch (Exception ex)
         {
@@ -40,8 +52,12 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
                 },
                 new ErrorResponse(domainEx.Code, domainEx.Message)),
 
+            TimeoutRejectedException => (
+                HttpStatusCode.GatewayTimeout,
+                new ErrorResponse("TIMEOUT", "The operation timed out. Please try again.")),
+
             TimeoutException => (
-                HttpStatusCode.ServiceUnavailable,
+                HttpStatusCode.GatewayTimeout,
                 new ErrorResponse("TIMEOUT", "The operation timed out. Please try again.")),
 
             _ => (
@@ -55,8 +71,7 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         context.Response.ContentType = "application/json";
         context.Response.StatusCode = (int)statusCode;
 
-        var options = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };
-        await context.Response.WriteAsync(JsonSerializer.Serialize(response, options));
+        await context.Response.WriteAsync(JsonSerializer.Serialize(response, JsonOptions));
     }
 }
 

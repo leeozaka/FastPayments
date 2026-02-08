@@ -8,6 +8,7 @@ using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Entities;
 using PagueVeloz.Domain.Enums;
 using PagueVeloz.Domain.Interfaces.Repositories;
+using PagueVeloz.Infrastructure.Resilience;
 using PagueVeloz.Infrastructure.Sagas.Consumers;
 using Xunit;
 
@@ -31,6 +32,7 @@ public sealed class TransferStateMachineTests : IAsyncLifetime
             .AddScoped(_ => _accountRepository)
             .AddScoped(_ => _transactionRepository)
             .AddScoped(_ => _unitOfWork)
+            .AddResiliencePolicies()
             .AddMassTransitTestHarness(cfg =>
             {
                 cfg.AddConsumer<DebitSourceConsumer>();

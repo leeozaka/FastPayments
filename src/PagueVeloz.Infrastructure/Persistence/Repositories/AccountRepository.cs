@@ -15,6 +15,13 @@ public sealed class AccountRepository(IReadDbContext readContext, ApplicationDbC
             .ConfigureAwait(false);
     }
 
+    public async Task<Account?> GetByAccountIdReadOnlyAsync(string accountId, CancellationToken cancellationToken = default)
+    {
+        return await readContext.Accounts
+            .FirstOrDefaultAsync(a => a.AccountId == accountId, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<Account?> GetByAccountIdWithLockAsync(string accountId, CancellationToken cancellationToken = default)
     {
         return await writeContext.Accounts

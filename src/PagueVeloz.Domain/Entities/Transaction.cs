@@ -48,7 +48,7 @@ public sealed class Transaction : Entity
 
     public void MarkAsReversed()
     {
-        Status = TransactionStatus.Failed;
+        Status = TransactionStatus.Reversed;
         UpdatedAt = DateTime.UtcNow;
     }
 }

@@ -6,11 +6,7 @@ services:
     ports:
       - "5000:8080"
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production
-      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=pagueveloz;Username=postgres;Password=postgres;Pooling=true;Minimum Pool Size=10;Maximum Pool Size=200;Connection Idle Lifetime=300;Connection Pruning Interval=10
-      - EnableDatabasePurge=true
-      - Logging__LogLevel__Default=Warning
-      - Logging__LogLevel__Microsoft.AspNetCore=Warning
+      - ASPNETCORE_ENVIRONMENT=Development
     depends_on:
       postgres:
         condition: service_healthy
@@ -26,6 +22,7 @@ services:
       POSTGRES_DB: pagueveloz
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    command: postgres -c max_connections=300 -c shared_buffers=128MB
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -38,7 +35,7 @@ services:
       - k6
 
   influxdb:
-    image: influxdb:1.12
+    image: influxdb:1.12-alpine
     ports:
       - "8086:8086"
     environment:
