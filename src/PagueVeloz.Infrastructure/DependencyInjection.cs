@@ -5,8 +5,6 @@ using Microsoft.Extensions.DependencyInjection;
 using PagueVeloz.Application.Interfaces;
 using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Interfaces.Repositories;
-using PagueVeloz.Domain.Interfaces.Services;
-using PagueVeloz.Domain.Services;
 using PagueVeloz.Infrastructure.Caching;
 using PagueVeloz.Infrastructure.Concurrency;
 using PagueVeloz.Infrastructure.Messaging;
@@ -70,7 +68,6 @@ public static class DependencyInjection
         services.AddScoped<IAccountRepository, AccountRepository>();
         services.AddScoped<ITransactionRepository, TransactionRepository>();
         services.AddScoped<IClientRepository, ClientRepository>();
-        services.AddScoped<ITransferService, TransferDomainService>();
         services.AddSingleton<IDistributedLockService, InMemoryDistributedLockService>();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddSingleton<IMetricsService, MetricsService>();
