@@ -29,7 +29,6 @@ bld/
 ## Visual Studio
 .vs/
 *.sln.ide/
-launchSettings.json
 
 ## Rider
 .idea/
@@ -51,6 +50,7 @@ launchSettings.json
 *.bak
 *.tmp
 *~
+*.pdf
 
 ## Docker
 docker-compose.override.yml
