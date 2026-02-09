@@ -20,6 +20,7 @@ public sealed class CreditDestinationConsumer(
     {
         var message = context.Message;
 
+        using (SerilogContext.PushProperty("SagaCorrelationId", message.CorrelationId))
         using (SerilogContext.PushProperty("ReferenceId", message.ReferenceId))
         using (SerilogContext.PushProperty("AccountId", message.AccountId))
         {

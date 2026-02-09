@@ -95,7 +95,7 @@
 - [x] Serilog structured logging
 - [x] Logging pipeline behavior (timing)
 - [x] **No performance metrics** — Consider adding Prometheus/OpenTelemetry metrics (transaction count, latency histograms, error rates).
-- [ ] **No transaction tracing/correlation** — Add correlation IDs or OpenTelemetry tracing.
+- [x] **No transaction tracing/correlation** — Add correlation IDs or OpenTelemetry tracing.
 - [x] Health checks incomplete
 
 ---

@@ -28,6 +28,7 @@
     <ProjectReference Include="..\..\src\PagueVeloz.Domain\PagueVeloz.Domain.csproj" />
     <ProjectReference Include="..\..\src\PagueVeloz.Application\PagueVeloz.Application.csproj" />
     <ProjectReference Include="..\..\src\PagueVeloz.Infrastructure\PagueVeloz.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\PagueVeloz.API\PagueVeloz.API.csproj" />
   </ItemGroup>
 
 </Project>
