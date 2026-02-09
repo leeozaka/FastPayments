@@ -107,19 +107,19 @@
 - [x] ProcessTransactionValidatorTests (7 tests)
 - [x] MoneyTests
 - [x] **TransferStateMachineTests (12 comprehensive saga tests)** — Covers happy path, failures, compensation, timeouts, idempotency, concurrent transfers
-- [ ] **No reversal operation tests** — Account entity reversal is missing, so no tests exist for it.
-- [ ] **No TransferDomainService unit tests** — However, saga-based transfer is now fully tested
-- [ ] **No Currency value object tests**
-- [ ] **No CreateAccountHandler tests**
-- [ ] **No ProcessTransactionHandler tests** (handler logic, not just validator)
+- [x] **Reversal operation tests** — AccountReversalTests.cs with 11 tests covering all reversal scenarios
+- [x] **TransferDomainService** — Saga-based transfer fully tested (unit + integration)
+- [x] **Currency value object tests** — CurrencyTests.cs with 10 tests
+- [x] **CreateAccountHandler tests** — CreateAccountHandlerTests.cs with 7 tests
+- [x] **ProcessTransactionHandler tests** — ProcessTransactionHandlerTests.cs with 14 tests
 
 ### Integration Tests
 - [x] TransactionEndpointTests (5 tests — create account, credit/debit, insufficient funds, batch, idempotency)
-- [~] **Transfer operation testing** — Saga unit tests cover transfer flows extensively, but no end-to-end API integration test
+- [x] **Transfer operation testing** — End-to-end API integration test + saga unit tests
 - [x] **Concurrent operations test** — TransferStateMachineTests includes concurrent transfer scenarios
-- [ ] **No reserve + capture flow integration test**
-- [ ] **No reversal flow integration test**
-- [ ] **No credit limit scenarios integration test**
+- [x] **Reserve + capture flow integration test** — Full reserve → capture API flow verified
+- [x] **Reversal flow integration test** — Credit and debit reversal API flows verified
+- [x] **Credit limit scenarios integration test** — Overdraft allowed + exceeded scenarios
 - [ ] **Integration tests use in-memory DB** — consider adding tests with real PostgreSQL via Testcontainers
 
 ---
