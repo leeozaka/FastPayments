@@ -5,6 +5,8 @@ using PagueVeloz.API.Extensions;
 using PagueVeloz.API.Middleware;
 using PagueVeloz.Application;
 using PagueVeloz.Infrastructure;
+using PagueVeloz.Infrastructure.Metrics;
+using OpenTelemetry.Metrics;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -22,6 +24,13 @@ try
     builder.Services.AddApiServices(builder.Configuration);
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
+    
+    builder.Services.AddOpenTelemetry()
+        .WithMetrics(metrics =>
+        {
+            metrics.AddMeter(MetricsService.MeterName);
+            metrics.AddPrometheusExporter();
+        });
 
     var app = builder.Build();
 
@@ -45,6 +54,8 @@ try
     {
         Predicate = check => check.Tags.Contains("ready")
     });
+
+    app.MapPrometheusScrapingEndpoint("/metrics");
 
     await app.RunAsync();
 }

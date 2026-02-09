@@ -32,5 +32,13 @@ public sealed class ProcessTransactionValidator : AbstractValidator<ProcessTrans
             .NotEmpty()
             .When(x => x.Operation.Equals("transfer", StringComparison.OrdinalIgnoreCase))
             .WithMessage("Destination account ID is required for transfers.");
+
+        RuleFor(x => x.Metadata)
+            .Must(m => m == null || m.Count <= 10)
+            .WithMessage("Metadata cannot have more than 10 keys.")
+            .Must(m => m == null || m.Keys.All(k => k.Length <= 64))
+            .WithMessage("Metadata keys cannot exceed 64 characters.")
+            .Must(m => m == null || m.Values.All(v => v == null || v.Length <= 256))
+            .WithMessage("Metadata values cannot exceed 256 characters.");
     }
 }

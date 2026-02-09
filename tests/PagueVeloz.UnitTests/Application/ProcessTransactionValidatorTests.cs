@@ -74,4 +74,70 @@ public class ProcessTransactionValidatorTests
 
         result.IsValid.Should().BeTrue();
     }
+
+    [Fact]
+    public void Metadata_WithTooManyKeys_ShouldFail()
+    {
+        var metadata = Enumerable.Range(1, 11)
+            .ToDictionary(i => $"key{i}", i => $"value{i}");
+
+        var command = new ProcessTransactionCommand(
+            "credit", "ACC-001", 10000, "BRL", "TXN-001", null, metadata);
+
+        var result = _validator.Validate(command);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("10 keys"));
+    }
+
+    [Fact]
+    public void Metadata_WithTooLongKey_ShouldFail()
+    {
+        var metadata = new Dictionary<string, string>
+        {
+            { new string('x', 65), "value" }
+        };
+
+        var command = new ProcessTransactionCommand(
+            "credit", "ACC-001", 10000, "BRL", "TXN-001", null, metadata);
+
+        var result = _validator.Validate(command);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("64 characters"));
+    }
+
+    [Fact]
+    public void Metadata_WithTooLongValue_ShouldFail()
+    {
+        var metadata = new Dictionary<string, string>
+        {
+            { "key", new string('x', 257) }
+        };
+
+        var command = new ProcessTransactionCommand(
+            "credit", "ACC-001", 10000, "BRL", "TXN-001", null, metadata);
+
+        var result = _validator.Validate(command);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("256 characters"));
+    }
+
+    [Fact]
+    public void Metadata_WithValidData_ShouldPass()
+    {
+        var metadata = new Dictionary<string, string>
+        {
+            { "description", "Test transaction" },
+            { "orderId", "ORD-12345" }
+        };
+
+        var command = new ProcessTransactionCommand(
+            "credit", "ACC-001", 10000, "BRL", "TXN-001", null, metadata);
+
+        var result = _validator.Validate(command);
+
+        result.IsValid.Should().BeTrue();
+    }
 }

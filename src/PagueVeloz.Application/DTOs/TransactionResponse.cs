@@ -24,4 +24,7 @@ public sealed record TransactionResponse
 
     [JsonPropertyName("error_message")]
     public string? ErrorMessage { get; init; }
+
+    [JsonPropertyName("credit_transaction_id")]
+    public string? CreditTransactionId { get; init; }
 }

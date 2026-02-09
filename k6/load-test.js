@@ -9,6 +9,7 @@ const BASE_URL = __ENV.BASE_URL || "http://localhost:5000";
 const transactionDuration = new Trend("transaction_duration", true);
 const accountCreationDuration = new Trend("account_creation_duration", true);
 const failedTransactions = new Counter("failed_transactions");
+const intentionalErrors = new Counter("intentional_errors");
 const successRate = new Rate("success_rate");
 
 export const options = {
@@ -236,6 +237,79 @@ export default function () {
 
       getBalance(accountId);
     });
+  }
+
+  // Intentional error scenarios (~5% of iterations)
+  if (randomIntBetween(1, 100) <= 5) {
+    const errorType = randomIntBetween(1, 4);
+    
+    if (errorType === 1) {
+      group("intentional_insufficient_funds", () => {
+        const { accountId } = createAccount();
+        sleep(0.1);
+        processTransaction("credit", accountId, 1000);
+        sleep(0.1);
+        const res = http.post(`${BASE_URL}/api/transactions`, JSON.stringify({
+          operation: "debit",
+          account_id: accountId,
+          amount: 999999,
+          currency: "BRL",
+          reference_id: uuidv4(),
+        }), { headers });
+        intentionalErrors.add(1, { error_type: "insufficient_funds" });
+        check(res, { "insufficient funds (expected 422)": (r) => r.status === 422 });
+      });
+    } else if (errorType === 2) {
+      group("intentional_metadata_validation", () => {
+        const { accountId } = createAccount();
+        sleep(0.1);
+        const bigMetadata = {};
+        for (let i = 0; i < 15; i++) bigMetadata[`key${i}`] = "value";
+        const res = http.post(`${BASE_URL}/api/transactions`, JSON.stringify({
+          operation: "credit",
+          account_id: accountId,
+          amount: 1000,
+          currency: "BRL",
+          reference_id: uuidv4(),
+          metadata: bigMetadata,
+        }), { headers });
+        intentionalErrors.add(1, { error_type: "metadata_validation" });
+        check(res, { "metadata validation (expected 400)": (r) => r.status === 400 });
+      });
+    } else if (errorType === 3) {
+      group("intentional_same_account_transfer", () => {
+        const { accountId } = createAccount();
+        sleep(0.1);
+        processTransaction("credit", accountId, 100000);
+        sleep(0.1);
+        const res = http.post(`${BASE_URL}/api/transactions`, JSON.stringify({
+          operation: "transfer",
+          account_id: accountId,
+          destination_account_id: accountId,
+          amount: 5000,
+          currency: "BRL",
+          reference_id: uuidv4(),
+        }), { headers });
+        intentionalErrors.add(1, { error_type: "same_account_transfer" });
+        check(res, { "same account transfer (expected 422)": (r) => r.status === 422 });
+      });
+    } else {
+      group("intentional_capture_without_reserve", () => {
+        const { accountId } = createAccount();
+        sleep(0.1);
+        processTransaction("credit", accountId, 100000);
+        sleep(0.1);
+        const res = http.post(`${BASE_URL}/api/transactions`, JSON.stringify({
+          operation: "capture",
+          account_id: accountId,
+          amount: 5000,
+          currency: "BRL",
+          reference_id: uuidv4(),
+        }), { headers });
+        intentionalErrors.add(1, { error_type: "capture_without_reserve" });
+        check(res, { "capture without reserve (expected 422)": (r) => r.status === 422 });
+      });
+    }
   }
 
   sleep(randomIntBetween(1, 3) / 10);

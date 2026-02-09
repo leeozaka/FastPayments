@@ -43,8 +43,8 @@
 - [x] UnitOfWork transaction management with rollback
 - [x] Domain event publishing after transaction processing
 - [x] Reversal handler: validate reversal of reserve/capture/transfer
-- [ ] **Transfer handler returns only debit transaction** — the credit transaction on the destination account is created by TransferDomainService but the response only includes the debit side. Consider returning both or a composite response.
-- [ ] **No metadata size/content validation** — metadata dictionary has no limits on key count or value lengths.
+- [x] **Transfer handler returns only debit transaction** — the credit transaction on the destination account is created by TransferDomainService but the response only includes the debit side. Consider returning both or a composite response.
+- [x] **No metadata size/content validation** — metadata dictionary has no limits on key count or value lengths.
 
 ---
 
@@ -94,7 +94,7 @@
 
 - [x] Serilog structured logging
 - [x] Logging pipeline behavior (timing)
-- [ ] **No performance metrics** — Consider adding Prometheus/OpenTelemetry metrics (transaction count, latency histograms, error rates).
+- [x] **No performance metrics** — Consider adding Prometheus/OpenTelemetry metrics (transaction count, latency histograms, error rates).
 - [ ] **No transaction tracing/correlation** — Add correlation IDs or OpenTelemetry tracing.
 - [x] Health checks incomplete
 

@@ -122,9 +122,18 @@ Content-Type: application/json
 
 ## Observabilidade e Monitoramento
 
-- **Health Checks**: `GET /health` para verificar a saúde da aplicação e conexão com banco.
-- **Logs**: Logs estruturados são gerados no console (e podem ser enviados para ferramentas como Elasticsearch/Seq).
-- **Métricas**: Métricas de negócio e performance são coletadas durante os testes de carga e visualizadas no Grafana.
+- **Health Checks**: 
+  - `GET /health/live` — Liveness probe
+  - `GET /health/ready` — Readiness probe com verificação de dependências
+  
+- **Métricas (Prometheus/OpenTelemetry)**: 
+  - Endpoint: `GET /metrics`
+  - Métricas disponíveis:
+    - `transactions_total{operation, status}` — Contador de transações processadas
+    - `transaction_duration_milliseconds{operation}` — Histograma de latência
+    - `transactions_errors_total{operation, error_type}` — Contador de erros
+  
+- **Logs**: Logs estruturados via Serilog (console + arquivo). Compatível com Elasticsearch/Seq.
 
 ---
 

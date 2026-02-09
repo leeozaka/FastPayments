@@ -7,14 +7,17 @@ using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Interfaces.Repositories;
 using PagueVeloz.Domain.Interfaces.Services;
 using PagueVeloz.Domain.Services;
+using PagueVeloz.Infrastructure.Caching;
 using PagueVeloz.Infrastructure.Concurrency;
 using PagueVeloz.Infrastructure.Messaging;
+using PagueVeloz.Infrastructure.Metrics;
 using PagueVeloz.Infrastructure.Persistence;
 using PagueVeloz.Infrastructure.Persistence.Context;
 using PagueVeloz.Infrastructure.Persistence.Repositories;
 using PagueVeloz.Infrastructure.Resilience;
 using PagueVeloz.Infrastructure.Sagas;
 using PagueVeloz.Infrastructure.Sagas.Consumers;
+using PagueVeloz.Infrastructure.Storage;
 
 namespace PagueVeloz.Infrastructure;
 
@@ -70,6 +73,9 @@ public static class DependencyInjection
         services.AddScoped<ITransferService, TransferDomainService>();
         services.AddSingleton<IDistributedLockService, InMemoryDistributedLockService>();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddSingleton<IMetricsService, MetricsService>();
+        services.AddSingleton<ICacheService, InMemoryCacheService>();
+        services.AddSingleton<IKeyValueStore, InMemoryKeyValueStore>();
 
         services.AddMassTransit(cfg =>
         {

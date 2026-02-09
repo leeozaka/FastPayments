@@ -15,10 +15,27 @@ public sealed class ProcessTransactionHandler(
     ITransferSagaService transferSagaService,
     IUnitOfWork unitOfWork,
     IEventBus eventBus,
-    IDistributedLockService lockService) : IRequestHandler<ProcessTransactionCommand, TransactionResponse>
+    IDistributedLockService lockService,
+    ICacheService cacheService,
+    IMetricsService metricsService) : IRequestHandler<ProcessTransactionCommand, TransactionResponse>
 {
+    private static readonly TimeSpan IdempotencyCacheTtl = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan BalanceCacheTtl = TimeSpan.FromSeconds(5);
+
     public async Task<TransactionResponse> Handle(ProcessTransactionCommand request, CancellationToken cancellationToken)
     {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        var idempotencyKey = CacheKeys.Idempotency(request.ReferenceId);
+        var cachedResponse = await cacheService.GetAsync<TransactionResponse>(idempotencyKey, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (cachedResponse is not null)
+        {
+            return cachedResponse;
+        }
+
+        // Slow path: check database
         var existingTransaction = await transactionRepository
             .GetByReferenceIdAsync(request.ReferenceId, cancellationToken)
             .ConfigureAwait(false);
@@ -29,13 +46,29 @@ public sealed class ProcessTransactionHandler(
                 .GetByAccountIdReadOnlyAsync(request.AccountId, cancellationToken)
                 .ConfigureAwait(false);
 
-            return MapToResponse(existingTransaction, existingAccount);
+            var response = MapToResponse(existingTransaction, existingAccount);
+            
+            await cacheService.SetAsync(idempotencyKey, response, IdempotencyCacheTtl, cancellationToken)
+                .ConfigureAwait(false);
+
+            return response;
         }
 
         var operation = ParseOperation(request.Operation);
 
         if (operation == TransactionType.Transfer)
-            return await ProcessTransferViaSagaAsync(request, cancellationToken).ConfigureAwait(false);
+        {
+            var transferResult = await ProcessTransferViaSagaAsync(request, cancellationToken).ConfigureAwait(false);
+            stopwatch.Stop();
+            metricsService.RecordTransactionDuration(request.Operation, stopwatch.Elapsed.TotalMilliseconds);
+            metricsService.RecordTransactionProcessed(request.Operation, transferResult.Status);
+            
+            // Cache the transfer result
+            await cacheService.SetAsync(idempotencyKey, transferResult, IdempotencyCacheTtl, cancellationToken)
+                .ConfigureAwait(false);
+            
+            return transferResult;
+        }
 
         await using var lockHandle = await lockService
             .AcquireLockAsync($"account:{request.AccountId}", TimeSpan.FromSeconds(30), cancellationToken)
@@ -57,7 +90,25 @@ public sealed class ProcessTransactionHandler(
         await eventBus.PublishAllAsync(account.DomainEvents, cancellationToken).ConfigureAwait(false);
         account.ClearDomainEvents();
 
-        return MapToResponse(transaction, account);
+        await InvalidateBalanceCacheAsync(request.AccountId, cancellationToken).ConfigureAwait(false);
+
+        stopwatch.Stop();
+        var status = transaction.Status.ToString().ToLowerInvariant();
+        metricsService.RecordTransactionDuration(request.Operation, stopwatch.Elapsed.TotalMilliseconds);
+        metricsService.RecordTransactionProcessed(request.Operation, status);
+
+        var result = MapToResponse(transaction, account);
+
+        await cacheService.SetAsync(idempotencyKey, result, IdempotencyCacheTtl, cancellationToken)
+            .ConfigureAwait(false);
+
+        return result;
+    }
+
+    private async Task InvalidateBalanceCacheAsync(string accountId, CancellationToken cancellationToken)
+    {
+        var balanceCacheKey = CacheKeys.AccountBalance(accountId);
+        await cacheService.RemoveAsync(balanceCacheKey, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<TransactionResponse> ProcessTransferViaSagaAsync(ProcessTransactionCommand request, CancellationToken ct)
@@ -73,6 +124,9 @@ public sealed class ProcessTransactionHandler(
             request.ReferenceId,
             request.Metadata,
             ct).ConfigureAwait(false);
+
+        await InvalidateBalanceCacheAsync(request.AccountId, ct).ConfigureAwait(false);
+        await InvalidateBalanceCacheAsync(request.DestinationAccountId, ct).ConfigureAwait(false);
 
         if (!result.Success)
         {
@@ -91,6 +145,7 @@ public sealed class ProcessTransactionHandler(
         return new TransactionResponse
         {
             TransactionId = $"{result.DebitTransactionId}-PROCESSED",
+            CreditTransactionId = result.CreditTransactionId,
             Status = "success",
             Balance = result.SourceBalance,
             ReservedBalance = result.SourceReservedBalance,
