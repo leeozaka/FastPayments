@@ -34,8 +34,18 @@ public static class ServiceCollectionExtensions
             {
                 Title = "PagueVeloz API",
                 Version = "v1",
-                Description = ""
+                Description = "API for handling payments and transactions."
             });
+            
+            c.EnableAnnotations();
+
+            var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            c.IncludeXmlComments(xmlPath);
+
+            var applicationXmlFile = "PagueVeloz.Application.xml";
+            var applicationXmlPath = Path.Combine(AppContext.BaseDirectory, applicationXmlFile);
+            c.IncludeXmlComments(applicationXmlPath);
         });
 
         var connectionString = configuration.GetConnectionString("DefaultConnection");
