@@ -91,7 +91,7 @@ public static class DependencyInjection
 
         services.AddScoped<ITransferSagaService, TransferSagaService>();
 
-        services.AddResiliencePolicies();
+        services.AddResiliencePolicies(configuration);
 
         return services;
     }

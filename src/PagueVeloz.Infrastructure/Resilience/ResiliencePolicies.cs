@@ -1,5 +1,7 @@
 using FluentValidation;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using PagueVeloz.Domain.Exceptions;
 using Polly;
 using Polly.CircuitBreaker;
@@ -17,54 +19,62 @@ public static class ResiliencePolicies
             and not ArgumentException
             and not OperationCanceledException;
 
-    public static IServiceCollection AddResiliencePolicies(this IServiceCollection services)
+    public static IServiceCollection AddResiliencePolicies(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddResiliencePipeline("default", builder =>
+        services.AddOptionsWithValidateOnStart<ResilienceOptions>()
+            .Bind(configuration.GetSection(ResilienceOptions.FileSectionName))
+            .ValidateDataAnnotations();
+
+        services.AddResiliencePipeline("default", (builder, context) =>
         {
+            var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceOptions>>().Value;
+
             builder.AddTimeout(new TimeoutStrategyOptions
             {
-                Timeout = TimeSpan.FromSeconds(5)
+                Timeout = TimeSpan.FromSeconds(settings.Default.TimeoutSeconds)
             });
 
             builder.AddRetry(new RetryStrategyOptions
             {
-                MaxRetryAttempts = 3,
+                MaxRetryAttempts = settings.Default.MaxRetryAttempts,
                 BackoffType = DelayBackoffType.Exponential,
-                Delay = TimeSpan.FromMilliseconds(200),
+                Delay = TimeSpan.FromMilliseconds(settings.Default.RetryDelayMs),
                 ShouldHandle = new PredicateBuilder().Handle<Exception>(IsTransientException)
             });
 
             builder.AddCircuitBreaker(new CircuitBreakerStrategyOptions
             {
-                FailureRatio = 0.5,
-                SamplingDuration = TimeSpan.FromSeconds(30),
-                MinimumThroughput = 5,
-                BreakDuration = TimeSpan.FromSeconds(30),
+                FailureRatio = settings.Default.CircuitBreakerFailureRatio,
+                SamplingDuration = TimeSpan.FromSeconds(settings.Default.CircuitBreakerSamplingDurationSeconds),
+                MinimumThroughput = settings.Default.CircuitBreakerMinimumThroughput,
+                BreakDuration = TimeSpan.FromSeconds(settings.Default.CircuitBreakerBreakDurationSeconds),
                 ShouldHandle = new PredicateBuilder().Handle<Exception>(IsTransientException)
             });
         });
 
-        services.AddResiliencePipeline("database", builder =>
+        services.AddResiliencePipeline("database", (builder, context) =>
         {
+            var settings = context.ServiceProvider.GetRequiredService<IOptions<ResilienceOptions>>().Value;
+
             builder.AddTimeout(new TimeoutStrategyOptions
             {
-                Timeout = TimeSpan.FromSeconds(10)
+                Timeout = TimeSpan.FromSeconds(settings.Database.TimeoutSeconds)
             });
 
             builder.AddRetry(new RetryStrategyOptions
             {
-                MaxRetryAttempts = 2,
+                MaxRetryAttempts = settings.Database.MaxRetryAttempts,
                 BackoffType = DelayBackoffType.Exponential,
-                Delay = TimeSpan.FromMilliseconds(500),
+                Delay = TimeSpan.FromMilliseconds(settings.Database.RetryDelayMs),
                 ShouldHandle = new PredicateBuilder().Handle<Exception>(IsTransientException)
             });
 
             builder.AddCircuitBreaker(new CircuitBreakerStrategyOptions
             {
-                FailureRatio = 0.3,
-                SamplingDuration = TimeSpan.FromSeconds(60),
-                MinimumThroughput = 3,
-                BreakDuration = TimeSpan.FromSeconds(60),
+                FailureRatio = settings.Database.CircuitBreakerFailureRatio,
+                SamplingDuration = TimeSpan.FromSeconds(settings.Database.CircuitBreakerSamplingDurationSeconds),
+                MinimumThroughput = settings.Database.CircuitBreakerMinimumThroughput,
+                BreakDuration = TimeSpan.FromSeconds(settings.Database.CircuitBreakerBreakDurationSeconds),
                 ShouldHandle = new PredicateBuilder().Handle<Exception>(IsTransientException)
             });
         });

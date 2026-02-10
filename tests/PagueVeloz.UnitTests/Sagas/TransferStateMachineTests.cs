@@ -1,6 +1,7 @@
 using FluentAssertions;
 using MassTransit;
 using MassTransit.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using PagueVeloz.Application.Interfaces;
@@ -28,11 +29,31 @@ public sealed class TransferStateMachineTests : IAsyncLifetime
         _transactionRepository = Substitute.For<ITransactionRepository>();
         _unitOfWork = new PassthroughUnitOfWork();
 
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Policies:Default:TimeoutSeconds"] = "5",
+                ["Policies:Default:MaxRetryAttempts"] = "3",
+                ["Policies:Default:RetryDelayMs"] = "200",
+                ["Policies:Default:CircuitBreakerFailureRatio"] = "0.5",
+                ["Policies:Default:CircuitBreakerSamplingDurationSeconds"] = "30",
+                ["Policies:Default:CircuitBreakerMinimumThroughput"] = "5",
+                ["Policies:Default:CircuitBreakerBreakDurationSeconds"] = "30",
+                ["Policies:Database:TimeoutSeconds"] = "10",
+                ["Policies:Database:MaxRetryAttempts"] = "2",
+                ["Policies:Database:RetryDelayMs"] = "500",
+                ["Policies:Database:CircuitBreakerFailureRatio"] = "0.3",
+                ["Policies:Database:CircuitBreakerSamplingDurationSeconds"] = "60",
+                ["Policies:Database:CircuitBreakerMinimumThroughput"] = "3",
+                ["Policies:Database:CircuitBreakerBreakDurationSeconds"] = "60"
+            })
+            .Build();
+
         _provider = new ServiceCollection()
             .AddScoped(_ => _accountRepository)
             .AddScoped(_ => _transactionRepository)
             .AddScoped(_ => _unitOfWork)
-            .AddResiliencePolicies()
+            .AddResiliencePolicies(configuration)
             .AddMassTransitTestHarness(cfg =>
             {
                 cfg.AddConsumer<DebitSourceConsumer>();

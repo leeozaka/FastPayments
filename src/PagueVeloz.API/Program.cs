@@ -1,5 +1,3 @@
-using System.Diagnostics;
-using Microsoft.AspNetCore.Components.Server.ProtectedBrowserStorage;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using PagueVeloz.API.Extensions;
 using PagueVeloz.API.Middleware;
@@ -24,7 +22,7 @@ try
     builder.Services.AddApiServices(builder.Configuration);
     builder.Services.AddApplication();
     builder.Services.AddInfrastructure(builder.Configuration);
-    
+
     builder.Services.AddOpenTelemetry()
         .WithMetrics(metrics =>
         {
