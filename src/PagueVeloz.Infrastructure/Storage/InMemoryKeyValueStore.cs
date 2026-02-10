@@ -5,15 +5,9 @@ using PagueVeloz.Application.Interfaces;
 
 namespace PagueVeloz.Infrastructure.Storage;
 
-public sealed class InMemoryKeyValueStore : IKeyValueStore
+public sealed class InMemoryKeyValueStore(ILogger<InMemoryKeyValueStore> logger) : IKeyValueStore
 {
     private readonly ConcurrentDictionary<string, string> _store = new();
-    private readonly ILogger<InMemoryKeyValueStore> _logger;
-
-    public InMemoryKeyValueStore(ILogger<InMemoryKeyValueStore> logger)
-    {
-        _logger = logger;
-    }
 
     public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
@@ -24,12 +18,12 @@ public sealed class InMemoryKeyValueStore : IKeyValueStore
             try
             {
                 var value = JsonSerializer.Deserialize<T>(json);
-                _logger.LogDebug("Key-value store get for key: {Key}", key);
+                logger.LogDebug("Key-value store get for key: {Key}", key);
                 return Task.FromResult(value);
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to deserialize value for key: {Key}", key);
+                logger.LogWarning(ex, "Failed to deserialize value for key: {Key}", key);
                 return Task.FromResult<T?>(default);
             }
         }
@@ -44,7 +38,7 @@ public sealed class InMemoryKeyValueStore : IKeyValueStore
         var json = JsonSerializer.Serialize(value);
         _store[key] = json;
 
-        _logger.LogDebug("Key-value store set for key: {Key}", key);
+        logger.LogDebug("Key-value store set for key: {Key}", key);
         return Task.CompletedTask;
     }
 
@@ -53,7 +47,7 @@ public sealed class InMemoryKeyValueStore : IKeyValueStore
         cancellationToken.ThrowIfCancellationRequested();
 
         _store.TryRemove(key, out _);
-        _logger.LogDebug("Key-value store removed for key: {Key}", key);
+        logger.LogDebug("Key-value store removed for key: {Key}", key);
         return Task.CompletedTask;
     }
 
@@ -83,12 +77,12 @@ public sealed class InMemoryKeyValueStore : IKeyValueStore
                 }
                 catch (JsonException ex)
                 {
-                    _logger.LogWarning(ex, "Failed to deserialize value for key: {Key}", kvp.Key);
+                    logger.LogWarning(ex, "Failed to deserialize value for key: {Key}", kvp.Key);
                 }
             }
         }
 
-        _logger.LogDebug("Key-value store prefix query for: {Prefix}, Found: {Count}", prefix, result.Count);
+        logger.LogDebug("Key-value store prefix query for: {Prefix}, Found: {Count}", prefix, result.Count);
         return Task.FromResult<IReadOnlyDictionary<string, T>>(result);
     }
 
@@ -106,7 +100,7 @@ public sealed class InMemoryKeyValueStore : IKeyValueStore
 
                 if (_store.TryUpdate(key, newJson, currentJson))
                 {
-                    _logger.LogDebug("Key-value store increment for key: {Key}, Delta: {Delta}, NewValue: {NewValue}", key, delta, newValue);
+                    logger.LogDebug("Key-value store increment for key: {Key}, Delta: {Delta}, NewValue: {NewValue}", key, delta, newValue);
                     return Task.FromResult(newValue);
                 }
             }
@@ -115,7 +109,7 @@ public sealed class InMemoryKeyValueStore : IKeyValueStore
                 var initialJson = JsonSerializer.Serialize(delta);
                 if (_store.TryAdd(key, initialJson))
                 {
-                    _logger.LogDebug("Key-value store increment (new key) for key: {Key}, Value: {Value}", key, delta);
+                    logger.LogDebug("Key-value store increment (new key) for key: {Key}, Value: {Value}", key, delta);
                     return Task.FromResult(delta);
                 }
             }

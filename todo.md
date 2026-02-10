@@ -120,7 +120,7 @@
 - [x] **Reserve + capture flow integration test** — Full reserve → capture API flow verified
 - [x] **Reversal flow integration test** — Credit and debit reversal API flows verified
 - [x] **Credit limit scenarios integration test** — Overdraft allowed + exceeded scenarios
-- [ ] **Integration tests use in-memory DB** — consider adding tests with real PostgreSQL via Testcontainers
+- [ ] **Integration tests use in-memory DB** — consider adding tests with real PostgreSQL via Testcontainers -- TODO: to study
 
 ---
 

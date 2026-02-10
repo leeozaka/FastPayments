@@ -5,15 +5,9 @@ using PagueVeloz.Application.Interfaces;
 
 namespace PagueVeloz.Infrastructure.Storage;
 
-public sealed class InMemorySagaStateRepository<TSaga> : ISagaStateRepository<TSaga> where TSaga : class
+public sealed class InMemorySagaStateRepository<TSaga>(ILogger<InMemorySagaStateRepository<TSaga>> logger) : ISagaStateRepository<TSaga> where TSaga : class
 {
     private readonly ConcurrentDictionary<Guid, string> _store = new();
-    private readonly ILogger<InMemorySagaStateRepository<TSaga>> _logger;
-
-    public InMemorySagaStateRepository(ILogger<InMemorySagaStateRepository<TSaga>> logger)
-    {
-        _logger = logger;
-    }
 
     public Task<TSaga?> LoadAsync(Guid correlationId, CancellationToken cancellationToken = default)
     {
@@ -24,17 +18,17 @@ public sealed class InMemorySagaStateRepository<TSaga> : ISagaStateRepository<TS
             try
             {
                 var saga = JsonSerializer.Deserialize<TSaga>(json);
-                _logger.LogDebug("Saga state loaded for CorrelationId: {CorrelationId}", correlationId);
+                logger.LogDebug("Saga state loaded for CorrelationId: {CorrelationId}", correlationId);
                 return Task.FromResult(saga);
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "Failed to deserialize saga state for CorrelationId: {CorrelationId}", correlationId);
+                logger.LogWarning(ex, "Failed to deserialize saga state for CorrelationId: {CorrelationId}", correlationId);
                 return Task.FromResult<TSaga?>(null);
             }
         }
 
-        _logger.LogDebug("Saga state not found for CorrelationId: {CorrelationId}", correlationId);
+        logger.LogDebug("Saga state not found for CorrelationId: {CorrelationId}", correlationId);
         return Task.FromResult<TSaga?>(null);
     }
 
@@ -45,7 +39,7 @@ public sealed class InMemorySagaStateRepository<TSaga> : ISagaStateRepository<TS
         var json = JsonSerializer.Serialize(saga);
         _store[correlationId] = json;
 
-        _logger.LogDebug("Saga state saved for CorrelationId: {CorrelationId}", correlationId);
+        logger.LogDebug("Saga state saved for CorrelationId: {CorrelationId}", correlationId);
         return Task.CompletedTask;
     }
 
@@ -54,7 +48,7 @@ public sealed class InMemorySagaStateRepository<TSaga> : ISagaStateRepository<TS
         cancellationToken.ThrowIfCancellationRequested();
 
         _store.TryRemove(correlationId, out _);
-        _logger.LogDebug("Saga state deleted for CorrelationId: {CorrelationId}", correlationId);
+        logger.LogDebug("Saga state deleted for CorrelationId: {CorrelationId}", correlationId);
         return Task.CompletedTask;
     }
 

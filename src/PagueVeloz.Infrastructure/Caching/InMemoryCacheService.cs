@@ -5,17 +5,10 @@ using PagueVeloz.Application.Interfaces;
 
 namespace PagueVeloz.Infrastructure.Caching;
 
-public sealed class InMemoryCacheService : ICacheService, IDisposable
+public sealed class InMemoryCacheService(ILogger<InMemoryCacheService> logger) : ICacheService, IDisposable
 {
-    private readonly IMemoryCache _cache;
-    private readonly ILogger<InMemoryCacheService> _logger;
+    private readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
     private readonly ConcurrentDictionary<string, byte> _keys = new();
-
-    public InMemoryCacheService(ILogger<InMemoryCacheService> logger)
-    {
-        _cache = new MemoryCache(new MemoryCacheOptions());
-        _logger = logger;
-    }
 
     public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)
     {
@@ -23,11 +16,11 @@ public sealed class InMemoryCacheService : ICacheService, IDisposable
 
         if (_cache.TryGetValue(key, out T? value))
         {
-            _logger.LogDebug("Cache hit for key: {Key}", key);
+            logger.LogDebug("Cache hit for key: {Key}", key);
             return Task.FromResult(value);
         }
 
-        _logger.LogDebug("Cache miss for key: {Key}", key);
+        logger.LogDebug("Cache miss for key: {Key}", key);
         return Task.FromResult<T?>(default);
     }
 
@@ -50,7 +43,7 @@ public sealed class InMemoryCacheService : ICacheService, IDisposable
         _cache.Set(key, value, options);
         _keys.TryAdd(key, 0);
 
-        _logger.LogDebug("Cache set for key: {Key}, Expiration: {Expiration}", key, expiration);
+        logger.LogDebug("Cache set for key: {Key}, Expiration: {Expiration}", key, expiration);
         return Task.CompletedTask;
     }
 
@@ -61,7 +54,7 @@ public sealed class InMemoryCacheService : ICacheService, IDisposable
         _cache.Remove(key);
         _keys.TryRemove(key, out _);
 
-        _logger.LogDebug("Cache removed for key: {Key}", key);
+        logger.LogDebug("Cache removed for key: {Key}", key);
         return Task.CompletedTask;
     }
 
