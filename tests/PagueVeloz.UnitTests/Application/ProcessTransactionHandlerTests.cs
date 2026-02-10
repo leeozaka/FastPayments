@@ -287,4 +287,70 @@ public class ProcessTransactionHandlerTests
         await _cacheService.Received().RemoveAsync(
             Arg.Is<string>(k => k.Contains("ACC-001")), Arg.Any<CancellationToken>());
     }
+
+    [Fact]
+    public async Task Handle_Debit_InsufficientFunds_ShouldReturnError()
+    {
+        var account = CreateTestAccount(balance: 1_000, creditLimit: 0);
+        SetupAccountLookup(account);
+        var command = new ProcessTransactionCommand("debit", "ACC-001", 999_999, "BRL", "TXN-INSUF", null, null);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ResultStatus.Error);
+    }
+
+    [Fact]
+    public async Task Handle_Capture_WithoutReserve_ShouldReturnError()
+    {
+        var account = CreateTestAccount();
+        SetupAccountLookup(account);
+        var command = new ProcessTransactionCommand("capture", "ACC-001", 50_000, "BRL", "TXN-CAP-FAIL", null, null);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ResultStatus.Error);
+    }
+
+    [Fact]
+    public async Task Handle_Reserve_InsufficientBalance_ShouldReturnError()
+    {
+        var account = CreateTestAccount(balance: 1_000);
+        SetupAccountLookup(account);
+        var command = new ProcessTransactionCommand("reserve", "ACC-001", 999_999, "BRL", "TXN-RES-FAIL", null, null);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ResultStatus.Error);
+    }
+
+    [Fact]
+    public async Task Handle_Transfer_SameAccount_ShouldReturnError()
+    {
+        var command = new ProcessTransactionCommand("transfer", "ACC-001", 10_000, "BRL", "TXN-SAME", "ACC-001", null);
+
+        var result = await _handler.Handle(command, CancellationToken.None);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ResultStatus.Error);
+    }
+
+    [Fact]
+    public async Task Handle_FailedTransaction_ShouldNotCacheIdempotencyKey()
+    {
+        var account = CreateTestAccount(balance: 1_000, creditLimit: 0);
+        SetupAccountLookup(account);
+        var command = new ProcessTransactionCommand("debit", "ACC-001", 999_999, "BRL", "TXN-NOCACHE", null, null);
+
+        await _handler.Handle(command, CancellationToken.None);
+
+        await _cacheService.DidNotReceive().SetAsync(
+            Arg.Is<string>(k => k.Contains("idempotency")),
+            Arg.Any<TransactionResponse>(),
+            Arg.Any<TimeSpan>(),
+            Arg.Any<CancellationToken>());
+    }
 }

@@ -242,12 +242,20 @@ export default function () {
   // Intentional error scenarios (~5% of iterations)
   if (randomIntBetween(1, 100) <= 5) {
     const errorType = randomIntBetween(1, 4);
-    
+
     if (errorType === 1) {
       group("intentional_insufficient_funds", () => {
-        const { accountId } = createAccount();
-        sleep(0.1);
-        processTransaction("credit", accountId, 1000);
+        const clientId = uuidv4();
+        const accountId = uuidv4();
+        const createPayload = JSON.stringify({
+          client_id: clientId,
+          account_id: accountId,
+          initial_balance: 500,
+          credit_limit: 0,
+          currency: "BRL",
+        });
+        const createRes = http.post(`${BASE_URL}/api/accounts`, createPayload, { headers });
+        check(createRes, { "account created (201)": (r) => r.status === 201 });
         sleep(0.1);
         const res = http.post(`${BASE_URL}/api/transactions`, JSON.stringify({
           operation: "debit",
@@ -291,7 +299,7 @@ export default function () {
           reference_id: uuidv4(),
         }), { headers });
         intentionalErrors.add(1, { error_type: "same_account_transfer" });
-        check(res, { "same account transfer (expected 422)": (r) => r.status === 422 });
+        check(res, { "same account transfer rejected (expected 4xx)": (r) => r.status === 400 || r.status === 422 });
       });
     } else {
       group("intentional_capture_without_reserve", () => {

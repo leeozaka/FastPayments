@@ -58,25 +58,37 @@ public sealed class TransactionsController(IMediator mediator) : ControllerBase
         [FromBody] List<TransactionRequest> requests,
         CancellationToken cancellationToken)
     {
-        var results = new List<TransactionResponse>();
+        var indexedRequests = requests.Select((r, i) => (Request: r, Index: i)).ToList();
+        var results = new TransactionResponse[requests.Count];
 
-        foreach (var request in requests)
-        {
-            var command = request.ToCommand();
-            var result = await mediator.Send(command, cancellationToken);
+        var accountGroups = indexedRequests.GroupBy(x => x.Request.AccountId);
 
-            if (result.IsSuccess)
-                results.Add(result.Value);
-            else
-                results.Add(new TransactionResponse
+        await Parallel.ForEachAsync(
+            accountGroups,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+                CancellationToken = cancellationToken
+            },
+            async (group, ct) =>
+            {
+                foreach (var (request, index) in group)
                 {
-                    TransactionId = request.ReferenceId,
-                    Status = "failed",
-                    ErrorMessage = string.Join("; ", result.Errors),
-                    Timestamp = DateTime.UtcNow
-                });
-        }
+                    var command = request.ToCommand();
+                    var result = await mediator.Send(command, ct);
 
-        return Ok(results);
+                    results[index] = result.IsSuccess
+                        ? result.Value
+                        : new TransactionResponse
+                        {
+                            TransactionId = request.ReferenceId,
+                            Status = "failed",
+                            ErrorMessage = string.Join("; ", result.Errors),
+                            Timestamp = DateTime.UtcNow
+                        };
+                }
+            });
+
+        return Ok(results.ToList());
     }
 }

@@ -140,4 +140,27 @@ public class ProcessTransactionValidatorTests
 
         result.IsValid.Should().BeTrue();
     }
+
+    [Fact]
+    public void Transfer_SameAccountAsDestination_ShouldFail()
+    {
+        var command = new ProcessTransactionCommand(
+            "transfer", "ACC-001", 10000, "BRL", "TXN-001", "ACC-001", null);
+
+        var result = _validator.Validate(command);
+
+        result.IsValid.Should().BeFalse();
+        result.Errors.Should().Contain(e => e.ErrorMessage.Contains("same"));
+    }
+
+    [Fact]
+    public void Transfer_DifferentDestination_ShouldPass()
+    {
+        var command = new ProcessTransactionCommand(
+            "transfer", "ACC-001", 10000, "BRL", "TXN-001", "ACC-002", null);
+
+        var result = _validator.Validate(command);
+
+        result.IsValid.Should().BeTrue();
+    }
 }

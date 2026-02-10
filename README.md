@@ -38,7 +38,7 @@ docker compose --profile default up --build
 
 1. Aplique as migrações (se necessário):
    ```bash
-   dotnet ef database update --project src/PagueVeloz.Infrastructure --startup-project src/PagueVeloz.API
+   dotnet ef database update --project src/PagueVeloz.Infrastructure --startup-project src/PagueVeloz.API --context ApplicationDbContext  
    ```
 
 A API estará disponível em: `http://localhost:5000`

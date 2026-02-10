@@ -38,6 +38,6 @@ public sealed class CreateAccountHandler(
 
         await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return Result.Success(account.ToResponse());
+        return Result.Created(account.ToResponse());
     }
 }
