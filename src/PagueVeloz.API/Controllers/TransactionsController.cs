@@ -1,6 +1,9 @@
+using Ardalis.Result;
+using Ardalis.Result.AspNetCore;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using PagueVeloz.Application.DTOs;
+using PagueVeloz.Application.Mappers;
 using PagueVeloz.Application.UseCases.Transactions;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -12,6 +15,7 @@ namespace PagueVeloz.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+[TranslateResultToActionResult]
 public sealed class TransactionsController(IMediator mediator) : ControllerBase
 {
     /// <summary>
@@ -28,24 +32,13 @@ public sealed class TransactionsController(IMediator mediator) : ControllerBase
     [ProducesResponseType(typeof(TransactionResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status422UnprocessableEntity)]
-    public async Task<IActionResult> ProcessTransaction(
+    [ExpectedFailures(ResultStatus.Invalid, ResultStatus.Error)]
+    public async Task<Result<TransactionResponse>> ProcessTransaction(
         [FromBody] TransactionRequest request,
         CancellationToken cancellationToken)
     {
-        var command = new ProcessTransactionCommand(
-            request.Operation,
-            request.AccountId,
-            request.Amount,
-            request.Currency,
-            request.ReferenceId,
-            request.DestinationAccountId,
-            request.Metadata);
-
-        var result = await mediator.Send(command, cancellationToken);
-
-        return result.Status == "failed"
-            ? UnprocessableEntity(result)
-            : Ok(result);
+        var command = request.ToCommand();
+        return await mediator.Send(command, cancellationToken);
     }
 
     /// <summary>
@@ -69,17 +62,19 @@ public sealed class TransactionsController(IMediator mediator) : ControllerBase
 
         foreach (var request in requests)
         {
-            var command = new ProcessTransactionCommand(
-                request.Operation,
-                request.AccountId,
-                request.Amount,
-                request.Currency,
-                request.ReferenceId,
-                request.DestinationAccountId,
-                request.Metadata);
-
+            var command = request.ToCommand();
             var result = await mediator.Send(command, cancellationToken);
-            results.Add(result);
+
+            if (result.IsSuccess)
+                results.Add(result.Value);
+            else
+                results.Add(new TransactionResponse
+                {
+                    TransactionId = request.ReferenceId,
+                    Status = "failed",
+                    ErrorMessage = string.Join("; ", result.Errors),
+                    Timestamp = DateTime.UtcNow
+                });
         }
 
         return Ok(results);

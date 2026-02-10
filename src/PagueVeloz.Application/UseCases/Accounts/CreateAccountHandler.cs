@@ -1,6 +1,8 @@
+using Ardalis.Result;
 using MediatR;
 using PagueVeloz.Application.DTOs;
 using PagueVeloz.Application.Interfaces;
+using PagueVeloz.Application.Mappers;
 using PagueVeloz.Domain.Entities;
 using PagueVeloz.Domain.Interfaces.Repositories;
 
@@ -9,9 +11,9 @@ namespace PagueVeloz.Application.UseCases.Accounts;
 public sealed class CreateAccountHandler(
     IAccountRepository accountRepository,
     IClientRepository clientRepository,
-    IUnitOfWork unitOfWork) : IRequestHandler<CreateAccountCommand, AccountResponse>
+    IUnitOfWork unitOfWork) : IRequestHandler<CreateAccountCommand, Result<AccountResponse>>
 {
-    public async Task<AccountResponse> Handle(CreateAccountCommand request, CancellationToken cancellationToken)
+    public async Task<Result<AccountResponse>> Handle(CreateAccountCommand request, CancellationToken cancellationToken)
     {
         var client = await clientRepository
             .GetByClientIdAsync(request.ClientId, cancellationToken)
@@ -36,16 +38,6 @@ public sealed class CreateAccountHandler(
 
         await unitOfWork.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        return new AccountResponse
-        {
-            AccountId = account.AccountId,
-            ClientId = account.ClientId,
-            Balance = account.Balance,
-            ReservedBalance = account.ReservedBalance,
-            AvailableBalance = account.AvailableBalance,
-            CreditLimit = account.CreditLimit,
-            Status = account.Status.ToString().ToLowerInvariant(),
-            Currency = account.CurrencyCode
-        };
+        return Result.Success(account.ToResponse());
     }
 }

@@ -1,3 +1,5 @@
+using Ardalis.Result;
+using Ardalis.Result.FluentValidation;
 using FluentValidation;
 using MediatR;
 
@@ -26,8 +28,41 @@ public sealed class ValidationBehavior<TRequest, TResponse>(IEnumerable<IValidat
             .ToList();
 
         if (failures.Count != 0)
+        {
+            if (IsResultType(typeof(TResponse)))
+            {
+                var errors = failures.Select(f => new ValidationError(f.ErrorMessage)).ToList();
+                return (TResponse)CreateInvalidResult(typeof(TResponse), errors);
+            }
+
             throw new ValidationException(failures);
+        }
 
         return await next().ConfigureAwait(false);
+    }
+
+    private static bool IsResultType(Type type)
+    {
+        if (type == typeof(Result))
+            return true;
+
+        return type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Result<>);
+    }
+
+    private static object CreateInvalidResult(Type resultType, List<ValidationError> errors)
+    {
+        if (resultType == typeof(Result))
+            return Result.Invalid(errors);
+
+        if (resultType.IsGenericType && resultType.GetGenericTypeDefinition() == typeof(Result<>))
+        {
+            var invalidMethod = typeof(Result<>)
+                .MakeGenericType(resultType.GetGenericArguments()[0])
+                .GetMethod(nameof(Result<object>.Invalid), [typeof(List<ValidationError>)]);
+
+            return invalidMethod!.Invoke(null, [errors])!;
+        }
+
+        throw new InvalidOperationException($"Cannot create invalid result for type {resultType}");
     }
 }

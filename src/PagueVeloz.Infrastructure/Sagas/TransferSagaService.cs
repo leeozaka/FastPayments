@@ -1,5 +1,6 @@
 using MassTransit;
 using PagueVeloz.Application.Sagas.Transfer;
+using PagueVeloz.Infrastructure.Mappers;
 
 namespace PagueVeloz.Infrastructure.Sagas;
 
@@ -33,16 +34,7 @@ public sealed class TransferSagaService(
                 {
                     if (ctx.Message.CorrelationId != correlationId) return Task.CompletedTask;
 
-                    completedTask.TrySetResult(new TransferSagaResult
-                    {
-                        Success = true,
-                        SagaId = ctx.Message.CorrelationId,
-                        DebitTransactionId = ctx.Message.DebitTransactionId,
-                        CreditTransactionId = ctx.Message.CreditTransactionId,
-                        SourceBalance = ctx.Message.SourceBalance,
-                        SourceReservedBalance = ctx.Message.SourceReservedBalance,
-                        SourceAvailableBalance = ctx.Message.SourceAvailableBalance
-                    });
+                    completedTask.TrySetResult(ctx.Message.ToResult());
                     return Task.CompletedTask;
                 });
 
@@ -50,12 +42,7 @@ public sealed class TransferSagaService(
                 {
                     if (ctx.Message.CorrelationId != correlationId) return Task.CompletedTask;
 
-                    completedTask.TrySetResult(new TransferSagaResult
-                    {
-                        Success = false,
-                        SagaId = ctx.Message.CorrelationId,
-                        FailureReason = ctx.Message.Reason
-                    });
+                    completedTask.TrySetResult(ctx.Message.ToResult());
                     return Task.CompletedTask;
                 });
             });

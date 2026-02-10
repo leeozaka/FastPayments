@@ -1,3 +1,4 @@
+using Ardalis.Result;
 using FluentAssertions;
 using NSubstitute;
 using PagueVeloz.Application.DTOs;
@@ -31,8 +32,9 @@ public class CreateAccountHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.AccountId.Should().Be("ACC-NEW");
-        result.ClientId.Should().Be("CLI-NEW");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.AccountId.Should().Be("ACC-NEW");
+        result.Value.ClientId.Should().Be("CLI-NEW");
         await _clientRepository.Received(1).AddAsync(Arg.Any<Client>(), Arg.Any<CancellationToken>());
         await _accountRepository.Received(1).AddAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>());
     }
@@ -48,7 +50,8 @@ public class CreateAccountHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.AccountId.Should().Be("ACC-EXIST");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.AccountId.Should().Be("ACC-EXIST");
         await _clientRepository.DidNotReceive().AddAsync(Arg.Any<Client>(), Arg.Any<CancellationToken>());
         await _accountRepository.Received(1).AddAsync(Arg.Any<Account>(), Arg.Any<CancellationToken>());
     }
@@ -63,8 +66,9 @@ public class CreateAccountHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Balance.Should().Be(50_000);
-        result.AvailableBalance.Should().Be(50_000);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Balance.Should().Be(50_000);
+        result.Value.AvailableBalance.Should().Be(50_000);
     }
 
     [Fact]
@@ -77,7 +81,8 @@ public class CreateAccountHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Balance.Should().Be(0);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Balance.Should().Be(0);
     }
 
     [Fact]
@@ -90,7 +95,8 @@ public class CreateAccountHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.AccountId.Should().NotBeNullOrWhiteSpace();
+        result.IsSuccess.Should().BeTrue();
+        result.Value.AccountId.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -116,12 +122,13 @@ public class CreateAccountHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Should().BeOfType<AccountResponse>();
-        result.AccountId.Should().Be("ACC-RESP");
-        result.ClientId.Should().Be("CLI-001");
-        result.Balance.Should().Be(10_000);
-        result.CreditLimit.Should().Be(50_000);
-        result.Currency.Should().Be("BRL");
-        result.Status.Should().Be("active");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Should().BeOfType<AccountResponse>();
+        result.Value.AccountId.Should().Be("ACC-RESP");
+        result.Value.ClientId.Should().Be("CLI-001");
+        result.Value.Balance.Should().Be(10_000);
+        result.Value.CreditLimit.Should().Be(50_000);
+        result.Value.Currency.Should().Be("BRL");
+        result.Value.Status.Should().Be("active");
     }
 }

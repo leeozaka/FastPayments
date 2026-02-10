@@ -3,6 +3,7 @@ using MassTransit;
 using MassTransit.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NSubstitute;
 using PagueVeloz.Application.Interfaces;
 using PagueVeloz.Application.Sagas.Transfer;
@@ -32,24 +33,25 @@ public sealed class TransferStateMachineTests : IAsyncLifetime
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["Policies:Default:TimeoutSeconds"] = "5",
-                ["Policies:Default:MaxRetryAttempts"] = "3",
-                ["Policies:Default:RetryDelayMs"] = "200",
-                ["Policies:Default:CircuitBreakerFailureRatio"] = "0.5",
-                ["Policies:Default:CircuitBreakerSamplingDurationSeconds"] = "30",
-                ["Policies:Default:CircuitBreakerMinimumThroughput"] = "5",
-                ["Policies:Default:CircuitBreakerBreakDurationSeconds"] = "30",
-                ["Policies:Database:TimeoutSeconds"] = "10",
-                ["Policies:Database:MaxRetryAttempts"] = "2",
-                ["Policies:Database:RetryDelayMs"] = "500",
-                ["Policies:Database:CircuitBreakerFailureRatio"] = "0.3",
-                ["Policies:Database:CircuitBreakerSamplingDurationSeconds"] = "60",
-                ["Policies:Database:CircuitBreakerMinimumThroughput"] = "3",
-                ["Policies:Database:CircuitBreakerBreakDurationSeconds"] = "60"
+                ["Resilience:Default:TimeoutSeconds"] = "30",
+                ["Resilience:Default:MaxRetryAttempts"] = "1",
+                ["Resilience:Default:RetryDelayMs"] = "10",
+                ["Resilience:Default:CircuitBreakerFailureRatio"] = "0.5",
+                ["Resilience:Default:CircuitBreakerSamplingDurationSeconds"] = "30",
+                ["Resilience:Default:CircuitBreakerMinimumThroughput"] = "100",
+                ["Resilience:Default:CircuitBreakerBreakDurationSeconds"] = "30",
+                ["Resilience:Database:TimeoutSeconds"] = "30",
+                ["Resilience:Database:MaxRetryAttempts"] = "1",
+                ["Resilience:Database:RetryDelayMs"] = "10",
+                ["Resilience:Database:CircuitBreakerFailureRatio"] = "0.5",
+                ["Resilience:Database:CircuitBreakerSamplingDurationSeconds"] = "30",
+                ["Resilience:Database:CircuitBreakerMinimumThroughput"] = "100",
+                ["Resilience:Database:CircuitBreakerBreakDurationSeconds"] = "30"
             })
             .Build();
 
         _provider = new ServiceCollection()
+            .AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Debug))
             .AddScoped(_ => _accountRepository)
             .AddScoped(_ => _transactionRepository)
             .AddScoped(_ => _unitOfWork)

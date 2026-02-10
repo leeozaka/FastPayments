@@ -7,7 +7,7 @@ namespace PagueVeloz.Infrastructure.Caching;
 
 public sealed class InMemoryCacheService(ILogger<InMemoryCacheService> logger) : ICacheService, IDisposable
 {
-    private readonly IMemoryCache _cache = new MemoryCache(new MemoryCacheOptions());
+    private readonly MemoryCache _cache = new(new MemoryCacheOptions());
     private readonly ConcurrentDictionary<string, byte> _keys = new();
 
     public Task<T?> GetAsync<T>(string key, CancellationToken cancellationToken = default)

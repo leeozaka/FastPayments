@@ -1,3 +1,4 @@
+using Ardalis.Result;
 using MediatR;
 using PagueVeloz.Application.DTOs;
 
@@ -9,4 +10,4 @@ public sealed record CreateAccountCommand(
     long InitialBalance,
     long CreditLimit,
     string Currency
-) : IRequest<AccountResponse>;
+) : IRequest<Result<AccountResponse>>;

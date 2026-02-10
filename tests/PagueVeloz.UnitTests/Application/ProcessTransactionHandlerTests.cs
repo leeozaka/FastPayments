@@ -1,3 +1,4 @@
+using Ardalis.Result;
 using FluentAssertions;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
@@ -75,8 +76,9 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Status.Should().Be("success");
-        result.Balance.Should().Be(150_000);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("success");
+        result.Value.Balance.Should().Be(150_000);
     }
 
     [Fact]
@@ -88,8 +90,9 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Status.Should().Be("success");
-        result.Balance.Should().Be(70_000);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("success");
+        result.Value.Balance.Should().Be(70_000);
     }
 
     [Fact]
@@ -101,8 +104,9 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Status.Should().Be("success");
-        result.ReservedBalance.Should().Be(40_000);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("success");
+        result.Value.ReservedBalance.Should().Be(40_000);
     }
 
     [Fact]
@@ -115,7 +119,8 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Status.Should().Be("success");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("success");
     }
 
     [Fact]
@@ -134,8 +139,9 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.TransactionId.Should().Be("TXN-CACHED");
-        result.Balance.Should().Be(99_999);
+        result.IsSuccess.Should().BeTrue();
+        result.Value.TransactionId.Should().Be("TXN-CACHED");
+        result.Value.Balance.Should().Be(99_999);
         await _accountRepository.DidNotReceive().GetByAccountIdAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
     }
 
@@ -153,7 +159,8 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Status.Should().Be("success");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("success");
         await _lockService.DidNotReceive()
             .AcquireLockAsync(Arg.Any<string>(), Arg.Any<TimeSpan?>(), Arg.Any<CancellationToken>());
     }
@@ -185,7 +192,8 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Status.Should().Be("success");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("success");
     }
 
     [Fact]
@@ -208,33 +216,36 @@ public class ProcessTransactionHandlerTests
 
         var result = await _handler.Handle(command, CancellationToken.None);
 
-        result.Status.Should().Be("success");
-        result.CreditTransactionId.Should().Be("TXN-TRF-CREDIT");
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Status.Should().Be("success");
+        result.Value.CreditTransactionId.Should().Be("TXN-TRF-CREDIT");
         await _transferSagaService.Received(1).ExecuteTransferAsync(
             "ACC-SRC", "ACC-DST", 50_000, "BRL", "TXN-TRF",
             Arg.Any<Dictionary<string, string>?>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task Handle_Transfer_WithoutDestination_ShouldThrow()
+    public async Task Handle_Transfer_WithoutDestination_ShouldReturnInvalid()
     {
         var command = new ProcessTransactionCommand("transfer", "ACC-SRC", 50_000, "BRL", "TXN-TRF-ND", null, null);
 
-        var act = () => _handler.Handle(command, CancellationToken.None);
+        var result = await _handler.Handle(command, CancellationToken.None);
 
-        await act.Should().ThrowAsync<DomainException>()
-            .WithMessage("*destination*");
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ResultStatus.Invalid);
+        result.ValidationErrors.Should().Contain(e => e.ErrorMessage.Contains("destination"));
     }
 
     [Fact]
-    public async Task Handle_InvalidOperation_ShouldThrow()
+    public async Task Handle_InvalidOperation_ShouldReturnInvalid()
     {
         var command = new ProcessTransactionCommand("unknown_op", "ACC-001", 10_000, "BRL", "TXN-INVALID", null, null);
 
-        var act = () => _handler.Handle(command, CancellationToken.None);
+        var result = await _handler.Handle(command, CancellationToken.None);
 
-        await act.Should().ThrowAsync<DomainException>()
-            .WithMessage("*Unknown operation*");
+        result.IsSuccess.Should().BeFalse();
+        result.Status.Should().Be(ResultStatus.Invalid);
+        result.ValidationErrors.Should().Contain(e => e.ErrorMessage.Contains("Unknown operation"));
     }
 
     [Fact]

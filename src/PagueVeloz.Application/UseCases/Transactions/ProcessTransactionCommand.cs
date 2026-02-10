@@ -1,3 +1,4 @@
+using Ardalis.Result;
 using MediatR;
 using PagueVeloz.Application.DTOs;
 using PagueVeloz.Application.Interfaces;
@@ -12,4 +13,4 @@ public sealed record ProcessTransactionCommand(
     string ReferenceId,
     string? DestinationAccountId,
     Dictionary<string, string>? Metadata
-) : IRequest<TransactionResponse>, ITraceable;
+) : IRequest<Result<TransactionResponse>>, ITraceable;

@@ -1,3 +1,4 @@
+using Ardalis.Result;
 using FluentAssertions;
 using MediatR;
 using Microsoft.Extensions.Logging;
@@ -15,9 +16,9 @@ namespace PagueVeloz.UnitTests.Application;
 
 public class LoggingBehaviorTests : IDisposable
 {
-    private readonly ILogger<LoggingBehavior<ProcessTransactionCommand, TransactionResponse>> _logger;
+    private readonly ILogger<LoggingBehavior<ProcessTransactionCommand, Result<TransactionResponse>>> _logger;
     private readonly InMemorySink _sink;
-    private readonly LoggingBehavior<ProcessTransactionCommand, TransactionResponse> _behavior;
+    private readonly LoggingBehavior<ProcessTransactionCommand, Result<TransactionResponse>> _behavior;
 
     public LoggingBehaviorTests()
     {
@@ -29,10 +30,10 @@ public class LoggingBehaviorTests : IDisposable
             .WriteTo.Sink(_sink)
             .CreateLogger();
 
-        _logger = Substitute.For<ILogger<LoggingBehavior<ProcessTransactionCommand, TransactionResponse>>>();
+        _logger = Substitute.For<ILogger<LoggingBehavior<ProcessTransactionCommand, Result<TransactionResponse>>>>();
         _logger.IsEnabled(Arg.Any<LogLevel>()).Returns(true);
 
-        _behavior = new LoggingBehavior<ProcessTransactionCommand, TransactionResponse>(_logger);
+        _behavior = new LoggingBehavior<ProcessTransactionCommand, Result<TransactionResponse>>(_logger);
     }
 
     public void Dispose()
@@ -54,11 +55,11 @@ public class LoggingBehaviorTests : IDisposable
             Timestamp = DateTime.UtcNow
         };
 
-        RequestHandlerDelegate<TransactionResponse> next = () => Task.FromResult(expectedResponse);
+        RequestHandlerDelegate<Result<TransactionResponse>> next = () => Task.FromResult(Result.Success(expectedResponse));
 
         var result = await _behavior.Handle(command, next, CancellationToken.None);
 
-        result.Should().Be(expectedResponse);
+        result.Value.Should().Be(expectedResponse);
     }
 
     [Fact]
@@ -75,10 +76,10 @@ public class LoggingBehaviorTests : IDisposable
             Timestamp = DateTime.UtcNow
         };
 
-        RequestHandlerDelegate<TransactionResponse> next = () =>
+        RequestHandlerDelegate<Result<TransactionResponse>> next = () =>
         {
             Log.Information("Inner handler executed");
-            return Task.FromResult(expectedResponse);
+            return Task.FromResult(Result.Success(expectedResponse));
         };
 
         await _behavior.Handle(command, next, CancellationToken.None);
@@ -105,10 +106,10 @@ public class LoggingBehaviorTests : IDisposable
             Timestamp = DateTime.UtcNow
         };
 
-        RequestHandlerDelegate<TransactionResponse> next = () =>
+        RequestHandlerDelegate<Result<TransactionResponse>> next = () =>
         {
             Log.Information("Processing debit");
-            return Task.FromResult(expectedResponse);
+            return Task.FromResult(Result.Success(expectedResponse));
         };
 
         await _behavior.Handle(command, next, CancellationToken.None);
@@ -130,7 +131,7 @@ public class LoggingBehaviorTests : IDisposable
         var command = new ProcessTransactionCommand(
             "debit", "ACC-ERR", 5000, "BRL", "TXN-ERR-001", null, null);
 
-        RequestHandlerDelegate<TransactionResponse> next = () =>
+        RequestHandlerDelegate<Result<TransactionResponse>> next = () =>
         {
             Log.Error("Something failed inside handler");
             throw new InvalidOperationException("test error");

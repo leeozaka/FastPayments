@@ -1,6 +1,9 @@
+using Ardalis.Result;
+using Ardalis.Result.AspNetCore;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using PagueVeloz.Application.DTOs;
+using PagueVeloz.Application.Mappers;
 using PagueVeloz.Application.UseCases.Accounts;
 using Swashbuckle.AspNetCore.Annotations;
 
@@ -12,6 +15,7 @@ namespace PagueVeloz.API.Controllers;
 [ApiController]
 [Route("api/[controller]")]
 [Produces("application/json")]
+[TranslateResultToActionResult]
 public sealed class AccountsController(IMediator mediator) : ControllerBase
 {
     /// <summary>
@@ -27,17 +31,11 @@ public sealed class AccountsController(IMediator mediator) : ControllerBase
     [SwaggerOperation(Summary = "Creates a new account", Description = "Creates a new account with the specified initial balance and credit limit.")]
     [ProducesResponseType(typeof(AccountResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Create([FromBody] CreateAccountRequest request, CancellationToken cancellationToken)
+    [ExpectedFailures(ResultStatus.Invalid)]
+    public async Task<Result<AccountResponse>> Create([FromBody] CreateAccountRequest request, CancellationToken cancellationToken)
     {
-        var command = new CreateAccountCommand(
-            request.ClientId,
-            request.AccountId,
-            request.InitialBalance,
-            request.CreditLimit,
-            request.Currency);
-
-        var result = await mediator.Send(command, cancellationToken);
-        return CreatedAtAction(nameof(GetBalance), new { accountId = result.AccountId }, result);
+        var command = request.ToCommand();
+        return await mediator.Send(command, cancellationToken);
     }
 
     /// <summary>
@@ -53,9 +51,9 @@ public sealed class AccountsController(IMediator mediator) : ControllerBase
     [SwaggerOperation(Summary = "Retrieves account balance", Description = "Returns the current, reserved, and available balance for the specified account ID.")]
     [ProducesResponseType(typeof(AccountResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetBalance(string accountId, CancellationToken cancellationToken)
+    [ExpectedFailures(ResultStatus.NotFound)]
+    public async Task<Result<AccountResponse>> GetBalance(string accountId, CancellationToken cancellationToken)
     {
-        var result = await mediator.Send(new GetBalanceQuery(accountId), cancellationToken);
-        return Ok(result);
+        return await mediator.Send(new GetBalanceQuery(accountId), cancellationToken);
     }
 }

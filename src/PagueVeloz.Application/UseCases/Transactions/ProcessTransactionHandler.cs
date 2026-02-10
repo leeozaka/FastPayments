@@ -1,6 +1,8 @@
+using Ardalis.Result;
 using MediatR;
 using PagueVeloz.Application.DTOs;
 using PagueVeloz.Application.Interfaces;
+using PagueVeloz.Application.Mappers;
 using PagueVeloz.Application.Sagas.Transfer;
 using PagueVeloz.Domain.Entities;
 using PagueVeloz.Domain.Enums;
@@ -17,12 +19,11 @@ public sealed class ProcessTransactionHandler(
     IEventBus eventBus,
     IDistributedLockService lockService,
     ICacheService cacheService,
-    IMetricsService metricsService) : IRequestHandler<ProcessTransactionCommand, TransactionResponse>
+    IMetricsService metricsService) : IRequestHandler<ProcessTransactionCommand, Result<TransactionResponse>>
 {
     private static readonly TimeSpan IdempotencyCacheTtl = TimeSpan.FromMinutes(5);
-    private static readonly TimeSpan BalanceCacheTtl = TimeSpan.FromSeconds(5);
 
-    public async Task<TransactionResponse> Handle(ProcessTransactionCommand request, CancellationToken cancellationToken)
+    public async Task<Result<TransactionResponse>> Handle(ProcessTransactionCommand request, CancellationToken cancellationToken)
     {
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
 
@@ -32,7 +33,7 @@ public sealed class ProcessTransactionHandler(
 
         if (cachedResponse is not null)
         {
-            return cachedResponse;
+            return Result.Success(cachedResponse);
         }
 
         // Slow path: check database
@@ -46,27 +47,40 @@ public sealed class ProcessTransactionHandler(
                 .GetByAccountIdReadOnlyAsync(request.AccountId, cancellationToken)
                 .ConfigureAwait(false);
 
-            var response = MapToResponse(existingTransaction, existingAccount);
-            
+            var response = existingTransaction.ToResponse(existingAccount);
+
             await cacheService.SetAsync(idempotencyKey, response, IdempotencyCacheTtl, cancellationToken)
                 .ConfigureAwait(false);
 
-            return response;
+            return Result.Success(response);
         }
 
-        var operation = ParseOperation(request.Operation);
+        var operationResult = ParseOperation(request.Operation);
+        if (!operationResult.IsSuccess)
+            return Result.Invalid(operationResult.ValidationErrors.ToArray());
+
+        var operation = operationResult.Value;
 
         if (operation == TransactionType.Transfer)
         {
             var transferResult = await ProcessTransferViaSagaAsync(request, cancellationToken).ConfigureAwait(false);
             stopwatch.Stop();
+
+            if (!transferResult.IsSuccess)
+            {
+                metricsService.RecordTransactionDuration(request.Operation, stopwatch.Elapsed.TotalMilliseconds);
+                metricsService.RecordTransactionProcessed(request.Operation, "failed");
+                return transferResult;
+            }
+
+            var transferResponse = transferResult.Value;
             metricsService.RecordTransactionDuration(request.Operation, stopwatch.Elapsed.TotalMilliseconds);
-            metricsService.RecordTransactionProcessed(request.Operation, transferResult.Status);
-            
+            metricsService.RecordTransactionProcessed(request.Operation, transferResponse.Status);
+
             // Cache the transfer result
-            await cacheService.SetAsync(idempotencyKey, transferResult, IdempotencyCacheTtl, cancellationToken)
+            await cacheService.SetAsync(idempotencyKey, transferResponse, IdempotencyCacheTtl, cancellationToken)
                 .ConfigureAwait(false);
-            
+
             return transferResult;
         }
 
@@ -97,12 +111,12 @@ public sealed class ProcessTransactionHandler(
         metricsService.RecordTransactionDuration(request.Operation, stopwatch.Elapsed.TotalMilliseconds);
         metricsService.RecordTransactionProcessed(request.Operation, status);
 
-        var result = MapToResponse(transaction, account);
+        var result = transaction.ToResponse(account);
 
         await cacheService.SetAsync(idempotencyKey, result, IdempotencyCacheTtl, cancellationToken)
             .ConfigureAwait(false);
 
-        return result;
+        return Result.Success(result);
     }
 
     private async Task InvalidateBalanceCacheAsync(string accountId, CancellationToken cancellationToken)
@@ -111,12 +125,12 @@ public sealed class ProcessTransactionHandler(
         await cacheService.RemoveAsync(balanceCacheKey, cancellationToken).ConfigureAwait(false);
     }
 
-    private async Task<TransactionResponse> ProcessTransferViaSagaAsync(ProcessTransactionCommand request, CancellationToken ct)
+    private async Task<Result<TransactionResponse>> ProcessTransferViaSagaAsync(ProcessTransactionCommand request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.DestinationAccountId))
-            throw new DomainException("MISSING_DESTINATION", "Transfer requires 'destination_account_id'.");
+            return Result.Invalid(new ValidationError("Transfer requires 'destination_account_id'."));
 
-        var result = await transferSagaService.ExecuteTransferAsync(
+        var sagaResult = await transferSagaService.ExecuteTransferAsync(
             request.AccountId,
             request.DestinationAccountId,
             request.Amount,
@@ -128,30 +142,11 @@ public sealed class ProcessTransactionHandler(
         await InvalidateBalanceCacheAsync(request.AccountId, ct).ConfigureAwait(false);
         await InvalidateBalanceCacheAsync(request.DestinationAccountId, ct).ConfigureAwait(false);
 
-        if (!result.Success)
-        {
-            return new TransactionResponse
-            {
-                TransactionId = $"{request.ReferenceId}-PROCESSED",
-                Status = "failed",
-                Balance = result.SourceBalance,
-                ReservedBalance = result.SourceReservedBalance,
-                AvailableBalance = result.SourceAvailableBalance,
-                Timestamp = DateTime.UtcNow,
-                ErrorMessage = result.FailureReason
-            };
-        }
+        var response = sagaResult.ToResponse();
 
-        return new TransactionResponse
-        {
-            TransactionId = $"{result.DebitTransactionId}-PROCESSED",
-            CreditTransactionId = result.CreditTransactionId,
-            Status = "success",
-            Balance = result.SourceBalance,
-            ReservedBalance = result.SourceReservedBalance,
-            AvailableBalance = result.SourceAvailableBalance,
-            Timestamp = DateTime.UtcNow
-        };
+        return !sagaResult.Success
+            ? Result.Error(response.ErrorMessage ?? "Transfer failed.")
+            : Result.Success(response);
     }
 
     private async Task<(Transaction, Account)> ProcessCreditAsync(ProcessTransactionCommand request, CancellationToken ct)
@@ -217,31 +212,17 @@ public sealed class ProcessTransactionHandler(
             ?? throw new DomainException("ACCOUNT_NOT_FOUND", $"Account '{accountId}' not found.");
     }
 
-    private static TransactionType ParseOperation(string operation)
+    private static Result<TransactionType> ParseOperation(string operation)
     {
         return operation.ToLowerInvariant() switch
         {
-            "credit" => TransactionType.Credit,
-            "debit" => TransactionType.Debit,
-            "reserve" => TransactionType.Reserve,
-            "capture" => TransactionType.Capture,
-            "reversal" => TransactionType.Reversal,
-            "transfer" => TransactionType.Transfer,
-            _ => throw new DomainException("INVALID_OPERATION", $"Unknown operation: {operation}")
-        };
-    }
-
-    private static TransactionResponse MapToResponse(Transaction transaction, Account? account)
-    {
-        return new TransactionResponse
-        {
-            TransactionId = $"{transaction.ReferenceId}-PROCESSED",
-            Status = transaction.Status.ToString().ToLowerInvariant(),
-            Balance = account?.Balance ?? 0,
-            ReservedBalance = account?.ReservedBalance ?? 0,
-            AvailableBalance = account?.AvailableBalance ?? 0,
-            Timestamp = transaction.Timestamp,
-            ErrorMessage = transaction.ErrorMessage
+            "credit" => Result.Success(TransactionType.Credit),
+            "debit" => Result.Success(TransactionType.Debit),
+            "reserve" => Result.Success(TransactionType.Reserve),
+            "capture" => Result.Success(TransactionType.Capture),
+            "reversal" => Result.Success(TransactionType.Reversal),
+            "transfer" => Result.Success(TransactionType.Transfer),
+            _ => Result.Invalid(new ValidationError($"Unknown operation: {operation}"))
         };
     }
 }
