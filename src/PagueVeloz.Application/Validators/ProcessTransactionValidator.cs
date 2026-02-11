@@ -33,6 +33,12 @@ public sealed class ProcessTransactionValidator : AbstractValidator<ProcessTrans
             .When(x => x.Operation.Equals("transfer", StringComparison.OrdinalIgnoreCase))
             .WithMessage("Destination account ID is required for transfers.");
 
+        RuleFor(x => x.DestinationAccountId)
+            .Must((command, destId) => !string.Equals(command.AccountId, destId, StringComparison.OrdinalIgnoreCase))
+            .When(x => x.Operation.Equals("transfer", StringComparison.OrdinalIgnoreCase)
+                     && !string.IsNullOrWhiteSpace(x.DestinationAccountId))
+            .WithMessage("Source and destination accounts cannot be the same.");
+
         RuleFor(x => x.Metadata)
             .Must(m => m == null || m.Count <= 10)
             .WithMessage("Metadata cannot have more than 10 keys.")

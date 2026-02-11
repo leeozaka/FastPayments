@@ -113,6 +113,9 @@ public sealed class ProcessTransactionHandler(
 
         var result = transaction.ToResponse(account);
 
+        if (transaction.Status == TransactionStatus.Failed)
+            return Result.Error(transaction.ErrorMessage ?? "Transaction failed.");
+
         await cacheService.SetAsync(idempotencyKey, result, IdempotencyCacheTtl, cancellationToken)
             .ConfigureAwait(false);
 
@@ -129,6 +132,9 @@ public sealed class ProcessTransactionHandler(
     {
         if (string.IsNullOrWhiteSpace(request.DestinationAccountId))
             return Result.Invalid(new ValidationError("Transfer requires 'destination_account_id'."));
+
+        if (string.Equals(request.AccountId, request.DestinationAccountId, StringComparison.OrdinalIgnoreCase))
+            return Result.Error("Source and destination accounts cannot be the same.");
 
         var sagaResult = await transferSagaService.ExecuteTransferAsync(
             request.AccountId,

@@ -89,7 +89,8 @@ public static class DependencyInjection
             });
         });
 
-        services.AddScoped<ITransferSagaService, TransferSagaService>();
+        services.AddSingleton<TransferSagaService>();
+        services.AddSingleton<ITransferSagaService>(sp => sp.GetRequiredService<TransferSagaService>());
 
         services.AddResiliencePolicies(configuration);
 
