@@ -34,9 +34,14 @@ public static class ServiceCollectionExtensions
             {
                 Title = "PagueVeloz API",
                 Version = "v1",
-                Description = "API for handling payments and transactions."
+                Description = "Financial transactions processing API. Supports credit, debit, reserve, capture, reversal and transfer operations with idempotency, optimistic concurrency and saga-based transfers.",
+                Contact = new OpenApiContact
+                {
+                    Name = "PagueVeloz Engineering",
+                    Url = new Uri("https://github.com/leeozaka/FastPayments")
+                }
             });
-            
+
             c.EnableAnnotations();
 
             var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
@@ -49,9 +54,9 @@ public static class ServiceCollectionExtensions
         });
 
         var connectionString = configuration.GetConnectionString("DefaultConnection");
-        
+
         var healthChecksBuilder = services.AddHealthChecks();
-        
+
         if (!string.IsNullOrEmpty(connectionString))
         {
             healthChecksBuilder.AddNpgSql(

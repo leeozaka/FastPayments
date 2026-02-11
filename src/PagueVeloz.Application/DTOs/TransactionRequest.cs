@@ -8,7 +8,7 @@ namespace PagueVeloz.Application.DTOs;
 public sealed record TransactionRequest
 {
     /// <summary>
-    /// The operation type: credit, debit, or transfer.
+    /// The operation type. Supported: credit, debit, reserve, capture, reversal, transfer.
     /// </summary>
     /// <example>credit</example>
     [JsonPropertyName("operation")]

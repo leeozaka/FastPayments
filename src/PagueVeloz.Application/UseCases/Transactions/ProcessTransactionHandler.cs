@@ -70,6 +70,7 @@ public sealed class ProcessTransactionHandler(
             {
                 metricsService.RecordTransactionDuration(request.Operation, stopwatch.Elapsed.TotalMilliseconds);
                 metricsService.RecordTransactionProcessed(request.Operation, "failed");
+                metricsService.RecordTransactionError(request.Operation, "transfer_failed");
                 return transferResult;
             }
 
@@ -114,7 +115,10 @@ public sealed class ProcessTransactionHandler(
         var result = transaction.ToResponse(account);
 
         if (transaction.Status == TransactionStatus.Failed)
+        {
+            metricsService.RecordTransactionError(request.Operation, "transaction_failed");
             return Result.Error(transaction.ErrorMessage ?? "Transaction failed.");
+        }
 
         await cacheService.SetAsync(idempotencyKey, result, IdempotencyCacheTtl, cancellationToken)
             .ConfigureAwait(false);
